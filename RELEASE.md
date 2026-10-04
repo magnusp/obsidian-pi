@@ -8,6 +8,7 @@ Use a dedicated Obsidian test vault, never your main vault.
 
 ```bash
 npm ci
+npm run build
 npm run ci
 npm run dev:install -- /path/to/vault/.obsidian/plugins/pi-agent
 ```
@@ -29,9 +30,11 @@ Then reload Obsidian, or disable and re-enable the plugin.
    - `package.json`
    - `versions.json`
    - `CHANGELOG.md`
-3. Run:
+3. Regenerate the bundle and run the gate. `npm run ci` never writes, so
+   `npm run build` has to run first or the bundle check fails:
 
 ```bash
+npm run build
 npm run ci
 ```
 
@@ -45,14 +48,14 @@ git push origin main
 
 ## Publish a release
 
-Create and push a tag that exactly matches the version in `manifest.json` and `package.json`:
+Create and push a tag that exactly matches the version in `manifest.json` and `package.json`. Use plain SemVer with no suffix: prerelease tags such as `0.0.16-beta.1` do not match the release trigger and could never satisfy the version check.
 
 ```bash
 git tag 0.0.2
 git push origin 0.0.2
 ```
 
-The GitHub Actions release workflow extracts the current version's notes from `CHANGELOG.md`, creates a GitHub release, uploads the Obsidian-supported assets, and generates artifact attestations:
+The GitHub Actions release workflow verifies the quality gate, rebuilds the bundle and checks it against the committed one, extracts the current version's notes from `CHANGELOG.md`, creates a GitHub release, uploads the Obsidian-supported assets, and generates artifact attestations:
 
 - `main.js`
 - `manifest.json`

@@ -18,27 +18,40 @@ release flow lives in [`RELEASE.md`](../RELEASE.md).
 
 ## Quality gates
 
-`npm run ci` runs, in order:
+`npm run ci` runs, in order, and writes nothing:
 
-1. `build` — regenerate `main.js` from `src/`
-2. `build:check` — fail if the committed `main.js` is stale
-3. `format:check` — Prettier over source, tests, scripts, docs, workflows, and
+1. `build:check` — rebuild in memory and fail if the committed `main.js` differs
+2. `format:check` — Prettier over source, tests, scripts, docs, workflows, and
    JSON
-4. `lint` — ESLint over `src`, `scripts`, and `tests`
-5. `lint:obsidian:errors` — the Obsidian plugin scanner, errors only
-6. `typecheck` — `tsc --noEmit`
-7. `test` — Vitest
-8. `version:check` — version consistency across manifests
+3. `lint` — ESLint over `src`, `scripts`, and `tests`
+4. `lint:obsidian` — the Obsidian plugin scanner, with a zero-warning budget
+5. `typecheck` — `tsc --noEmit`
+6. `test` — Vitest
+7. `version:check` — version consistency across manifests
+
+`ci` deliberately does not run `build`. It used to, and the bundle check that
+followed regenerated the very file it compared against, so a stale committed
+`main.js` always passed. Rebuild first, then verify:
+
+```bash
+npm run build
+npm run ci
+```
 
 Run the whole gate before pushing. Targeted runs are fine while iterating:
 
 ```bash
-npm run build && npm run build:check
+npm run build:check
 npm test
 npm run lint
+npm run lint:obsidian:report
 npm run typecheck
 npm run format:check
 ```
+
+`lint:obsidian` fails on any scanner warning, because submission review reads
+the full scanner output. `lint:obsidian:report` lists the same findings without
+failing, for looking them up.
 
 ## Dependencies
 
@@ -50,18 +63,26 @@ no runtime `dependencies`. `obsidian`, `@codemirror/state`, and
 advisories. They are intentional: removing one will reintroduce a vulnerability,
 so verify with `npm audit` before touching them.
 
+`.github/dependabot.yml` opens weekly pull requests for npm and GitHub Actions
+updates, which is what keeps those overrides and the pinned action SHAs current.
+Dependabot cannot satisfy an override from a version range alone, so an advisory
+that needs a new `overrides` entry is still a manual edit. The Security workflow
+runs `npm audit --audit-level=high` over the whole installed tree on pull
+requests, pushes, and a weekly schedule; `npm audit` covers the devDependencies
+that execute during the build, and `npm run audit` runs the same check locally.
+
 Use `npm ci`, not `npm install`, for reproducible installs. Some advisories have
 no reachable fix through `npm audit fix`, so the lockfile is regenerated
 deliberately rather than by the audit fixer.
 
 ## Continuous integration
 
-| Workflow             | Trigger                                             | Purpose                                     |
-| -------------------- | --------------------------------------------------- | ------------------------------------------- |
-| `ci.yml`             | pull requests, pushes to `main`                     | the `npm run ci` quality gate               |
-| `security.yml`       | pull requests, pushes to `main`, weekly, manual     | zizmor workflow audit and dependency review |
-| `skip-lib-check.yml` | pull requests touching dependencies, weekly, manual | reports when `skipLibCheck` can be removed  |
-| `release.yml`        | tags matching `*.*.*`                               | publishes the release                       |
+| Workflow             | Trigger                                             | Purpose                                               |
+| -------------------- | --------------------------------------------------- | ----------------------------------------------------- |
+| `ci.yml`             | pull requests, pushes to `main`                     | the `npm run ci` quality gate                         |
+| `security.yml`       | pull requests, pushes to `main`, weekly, manual     | zizmor workflow audit, `npm audit`, dependency review |
+| `skip-lib-check.yml` | pull requests touching dependencies, weekly, manual | reports when `skipLibCheck` can be removed            |
+| `release.yml`        | tags matching `[0-9]+.[0-9]+.[0-9]+`                | publishes the release                                 |
 
 Notes that matter when changing these:
 
@@ -72,6 +93,15 @@ Notes that matter when changing these:
   merges on `zizmor` results at `alerts_threshold: errors`. That ruleset is a
   repository setting, not a file in this repository, so it will not travel with a
   clone.
+- **`release.yml` rebuilds and then diffs against the committed bundle.** It
+  runs `npm run ci`, which no longer writes, then `npm run build`, then
+  `git diff --exit-code -- main.js`. A tag on a commit that changed `src/`
+  without regenerating the bundle therefore fails the run before anything is
+  published.
+- **The release trigger is digits-and-dots, not `*.*.*`.** Obsidian reads the
+  version from `manifest.json`, so a prerelease tag such as `0.0.16-beta.1` can
+  never satisfy the version check. Restricting the trigger keeps such a tag
+  from burning a full quality-gate run.
 - **`tsconfig.json` sets `skipLibCheck`** because `obsidian@1.13.x` publishes
   declarations where `Menu`, `Modal`, and `PopoverSuggest` declare
   `HistoryHandler` without `onHistoryBack`. `skip-lib-check.yml` exists so the

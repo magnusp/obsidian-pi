@@ -14,11 +14,14 @@ From this repository (not from the test vault):
 
 ```bash
 npm ci
+npm run build
 npm run ci
 npm run test:pi -- /path/to/dedicated/test-vault
 ```
 
-`npm run ci` includes `lint:obsidian:errors`, which runs the official `eslint-plugin-obsidianmd` recommended rules and fails on error-level Community scanner findings. This gate runs on pull requests, pushes to `main`, and again before the release workflow can publish assets. Run `npm run lint:obsidian` separately to inspect the scanner's non-blocking warnings as well.
+`npm run ci` includes `lint:obsidian`, which runs the official `eslint-plugin-obsidianmd` recommended rules with a zero-warning budget, so any Community scanner finding fails the gate. Use `npm run lint:obsidian:report` to list findings without failing. This gate runs on pull requests, pushes to `main`, and again before the release workflow can publish assets.
+
+`npm run ci` verifies and never writes, so `npm run build` has to run first; otherwise `build:check` correctly reports a stale committed `main.js`.
 
 `test:pi` is opt-in. It starts Pi RPC with `--offline --no-tools --no-session`, keeps normal extension discovery enabled for compatibility coverage, disables skills, prompt templates, themes, context files, and project approval, then reads state/models/commands. It sends no model prompt or provider request and therefore incurs no model-provider charge.
 

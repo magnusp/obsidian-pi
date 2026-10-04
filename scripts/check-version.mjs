@@ -27,7 +27,13 @@ if (versions[manifest.version] !== manifest.minAppVersion) {
 }
 
 if (tag && tag !== manifest.version) {
-  fail(`git tag (${tag}) does not match manifest.json version (${manifest.version})`);
+  // Prerelease tags such as 0.0.16-beta.1 cannot pass: Obsidian reads the
+  // version from manifest.json, so the tag has to equal it exactly. The release
+  // workflow only triggers on digits-and-dots tags for the same reason.
+  fail(
+    `git tag (${tag}) does not match manifest.json version (${manifest.version}). ` +
+      `Release tags must be exact SemVer with no prerelease or build suffix.`
+  );
 }
 
 console.log(`Version ${manifest.version} is valid.`);

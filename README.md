@@ -99,7 +99,6 @@ Use a dedicated test vault. Do not develop or test plugin changes in your main v
 ```bash
 npm ci
 npm run build
-npm run build:check
 npm run ci
 npm run test:pi -- /path/to/dedicated/test-vault
 npm run dev:install -- /path/to/dedicated/test-vault/.obsidian/plugins/pi-agent
@@ -113,9 +112,11 @@ See [TESTING.md](TESTING.md) for the complete automated and dedicated `ObsidianT
 
 1. Create a release-prep branch from `main`.
 2. Update `manifest.json`, `package.json`, and `versions.json`; promote `CHANGELOG.md` `Unreleased` entries into the new version section.
-3. Run:
+3. Run the build and the gate. `npm run ci` verifies and never writes, so
+   `npm run build` has to run first:
 
 ```bash
+npm run build
 npm run ci
 ```
 

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Fixed the release quality gate so it can no longer pass with a stale `main.js`: `npm run ci` verifies without writing, `build:check` now compares a fresh in-memory build against the committed bundle, and the release workflow rebuilds and fails if its output differs from what was committed, so a tag on a commit that skipped a rebuild cannot publish an out-of-date bundle.
+- Added Dependabot for npm and GitHub Actions updates, so the advisory `overrides` in `package.json` and the pinned action SHAs stop depending on someone noticing.
+- Added a full-tree `npm audit --audit-level=high` gate to the Security workflow. The dependency review only saw what a pull request touched, so an advisory disclosed against a version already in the lockfile went unreported; the audit also covers the devDependencies that execute during the build.
+- Budgeted the Obsidian plugin scanner lint at zero warnings instead of errors only, since submission review reads the full scanner output. `npm run lint:obsidian:report` lists the same findings without failing.
+- Restricted the release trigger to plain SemVer tags and documented that prerelease tags are unsupported, instead of letting `0.0.16-beta.1` start a run that could never satisfy the version check.
+- Recorded the Community Plugins submission checklist, including the `obsidian-pi` repository name against the `pi-agent` plugin id, as an explicit decision to make before submission.
+
 - Updated the development dependency set to clear all known npm security advisories; `npm audit` now reports zero vulnerabilities. Advisory fixes are pinned with minimal in-range `overrides`, and `obsidian` types move to 1.13.1 with `skipLibCheck` enabled to tolerate an upstream defect in its published declarations. No runtime dependency or shipped plugin code changed.
 
 ## 0.0.15
