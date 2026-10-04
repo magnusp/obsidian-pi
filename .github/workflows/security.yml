@@ -1,0 +1,106 @@
+name: Security
+
+# Workflow and dependency security checks, kept separate from the quality gate
+# so a security signal is never confused with a build failure.
+#
+# zizmor runs in its default Advanced Security mode, which uploads SARIF to the
+# code scanning tab and deliberately does NOT fail the run on findings. The
+# blocking signal comes from the code scanning rule in the repository ruleset,
+# which gates merges on the zizmor results instead. Keeping the workflow
+# non-blocking matters because zizmor's own guidance is that workflows should
+# only fail on internal errors, and because a rule can then be tightened in one
+# place without editing workflows.
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  schedule:
+    # Weekly, Tuesday 05:41 UTC, so new zizmor audits and advisories that
+    # affect already-merged workflows still surface.
+    - cron: "41 5 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  zizmor:
+    name: Audit workflows with zizmor
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      # Uploads the SARIF report to the code scanning tab.
+      security-events: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Audit workflows
+        uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
+        with:
+          # Audit only the workflow definitions rather than letting zizmor
+          # discover inputs from the working directory.
+          inputs: .github/workflows
+          # Online audits check action references against the advisory data,
+          # which is what catches a newly disclosed vulnerable action.
+          online-audits: "true"
+
+  dependency-review:
+    name: Dependency review
+
+    # Only meaningful on pull requests, where the action can diff the proposed
+    # changes against the base branch.
+    #
+    # The action requires the dependency graph to be enabled for the
+    # repository (Settings > Code security and analysis > Dependency graph).
+    # Rather than failing CI when that repository-level setting is off, the
+    # probe step below skips the review and logs why.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Detect dependency graph availability
+        id: graph
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            // The SBOM endpoint is only served when the dependency graph is
+            // enabled, which makes it a usable probe. Uses the raw request
+            // helper so the check does not depend on a specific octokit
+            // method name staying stable.
+            try {
+              await github.request("GET /repos/{owner}/{repo}/dependency-graph/sbom", {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+              });
+              core.setOutput("enabled", "true");
+            } catch (error) {
+              // Any failure is treated as "not enabled" so a repository-level
+              // setting never blocks an unrelated pull request. The warning
+              // keeps the skip visible in the run log.
+              core.warning(
+                `Dependency graph unavailable, skipping dependency review: ${error.message}`
+              );
+              core.setOutput("enabled", "false");
+            }
+
+      - name: Review dependency changes
+        if: steps.graph.outputs.enabled == 'true'
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          # Blocks the pull request only on high and critical advisories, so
+          # low and moderate findings stay visible without adding churn.
+          fail-on-severity: high

@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -28,53 +30,3 @@ jobs:
 
       - name: Run quality gates
         run: npm run ci
-
-  dependency-review:
-    name: Dependency review
-
-    # Only meaningful on pull requests, where the action can diff the proposed
-    # changes against the base branch.
-    #
-    # The action requires the dependency graph to be enabled for the
-    # repository (Settings > Code security and analysis > Dependency graph).
-    # Rather than failing CI when that repository-level setting is off, the
-    # probe step below skips the review and logs why.
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-
-    permissions:
-      contents: read
-
-    steps:
-      - name: Detect dependency graph availability
-        id: graph
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        with:
-          script: |
-            // The SBOM endpoint is only served when the dependency graph is
-            // enabled, which makes it a usable probe. Uses the raw request
-            // helper so the check does not depend on a specific octokit
-            // method name staying stable.
-            try {
-              await github.request("GET /repos/{owner}/{repo}/dependency-graph/sbom", {
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-              });
-              core.setOutput("enabled", "true");
-            } catch (error) {
-              // Any failure is treated as "not enabled" so a repository-level
-              // setting never blocks an unrelated pull request. The warning
-              // keeps the skip visible in the run log.
-              core.warning(
-                `Dependency graph unavailable, skipping dependency review: ${error.message}`
-              );
-              core.setOutput("enabled", "false");
-            }
-
-      - name: Review dependency changes
-        if: steps.graph.outputs.enabled == 'true'
-        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
-        with:
-          # Blocks the pull request only on high and critical advisories, so
-          # low and moderate findings stay visible without adding churn.
-          fail-on-severity: high
