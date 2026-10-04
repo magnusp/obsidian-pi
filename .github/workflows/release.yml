@@ -49,12 +49,21 @@ jobs:
             manifest.json
             styles.css
 
+      # `gh` ships with the runner, so publishing needs no third-party action.
+      # GITHUB_REF_NAME is the pushed tag, which avoids interpolating an
+      # expression into the script body. `gh` exits non-zero when an asset path
+      # does not exist, which preserves the previous
+      # fail_on_unmatched_files behaviour, and --verify-tag aborts rather than
+      # creating a tag if this workflow is ever triggered without one.
       - name: Create GitHub release
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
-        with:
-          body_path: release-notes.md
-          files: |
-            main.js
-            manifest.json
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "${GITHUB_REF_NAME}" \
+            --verify-tag \
+            --title "${GITHUB_REF_NAME}" \
+            --notes-file release-notes.md \
+            main.js \
+            manifest.json \
             styles.css
-          fail_on_unmatched_files: true
