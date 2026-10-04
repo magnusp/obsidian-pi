@@ -132,3 +132,5 @@ The release workflow uses the current `CHANGELOG.md` entry as release notes, pub
 - `main.js`
 - `manifest.json`
 - `styles.css`
+
+<!-- ruleset probe -->
