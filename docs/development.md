@@ -100,32 +100,32 @@ deliberately rather than by the audit fixer.
 
 ## Continuous integration
 
-| Workflow             | Trigger                                             | Purpose                                               |
-| -------------------- | --------------------------------------------------- | ----------------------------------------------------- |
-| `ci.yml`             | pull requests, pushes to `main`                     | the `npm run ci` quality gate                         |
-| `security.yml`       | pull requests, pushes to `main`, weekly, manual     | zizmor workflow audit, `npm audit`, dependency review |
-| `skip-lib-check.yml` | pull requests touching dependencies, weekly, manual | reports when `skipLibCheck` can be removed            |
-| `release.yml`        | tags matching `[0-9]+.[0-9]+.[0-9]+`                | publishes the release                                 |
+| Workflow             | Trigger                                             | Purpose                                                                |
+| -------------------- | --------------------------------------------------- | ---------------------------------------------------------------------- |
+| `ci.yml`             | pull requests, pushes to `main`                     | Runs the `npm run ci` quality gate                                     |
+| `security.yml`       | pull requests, pushes to `main`, weekly, manual     | Runs the zizmor workflow audit, `npm audit`, and the dependency review |
+| `skip-lib-check.yml` | pull requests touching dependencies, weekly, manual | Reports when `skipLibCheck` can be removed                             |
+| `release.yml`        | tags matching `[0-9]+.[0-9]+.[0-9]+`                | Publishes the release                                                  |
 
 Notes that matter when changing these:
 
-- **Actions are pinned to full commit SHAs** with a trailing `# vX.Y.Z` comment.
-  GitHub only guarantees immutability at a SHA, so please keep that form.
-- **zizmor runs in Advanced Security mode**, which uploads SARIF and does not
+- Actions are pinned to full commit SHAs with a trailing `# vX.Y.Z` comment.
+  GitHub only guarantees immutability at a SHA, so keep that form.
+- zizmor runs in Advanced Security mode, which uploads SARIF and does not
   fail the run. Blocking comes from a `code_scanning` ruleset rule that gates
   merges on `zizmor` results at `alerts_threshold: errors`. That ruleset is a
   repository setting, not a file in this repository, so it will not travel with a
   clone.
-- **`release.yml` rebuilds and then diffs against the committed bundle.** It
+- `release.yml` rebuilds and then diffs against the committed bundle. It
   runs `npm run ci`, which no longer writes, then `npm run build`, then
   `git diff --exit-code -- main.js`. A tag on a commit that changed `src/`
   without regenerating the bundle therefore fails the run before anything is
   published.
-- **The release trigger is digits-and-dots, not `*.*.*`.** Obsidian reads the
+- The release trigger is digits and dots, not `*.*.*`. Obsidian reads the
   version from `manifest.json`, so a prerelease tag such as `0.0.16-beta.1` can
   never satisfy the version check. Restricting the trigger keeps such a tag
   from burning a full quality-gate run.
-- **`tsconfig.json` sets `skipLibCheck`** because `obsidian@1.13.x` publishes
+- `tsconfig.json` sets `skipLibCheck` because `obsidian@1.13.x` publishes
   declarations where `Menu`, `Modal`, and `PopoverSuggest` declare
   `HistoryHandler` without `onHistoryBack`. `skip-lib-check.yml` exists so the
   workaround is removed once upstream fixes it.
@@ -149,7 +149,7 @@ running `npm test`.
 - Avoid `innerHTML`; build DOM with Obsidian helpers and text setters.
 - Do not introduce `:has()` selectors or `!important` in `styles.css` unless
   documented inline with a regression test.
-- Add privacy documentation for any new data, network, or file access, and
-  update `README.md` and `PRIVACY.md` accordingly.
+- Add privacy documentation for any new data, network, or file access, and update
+  `README.md` and [Privacy](../PRIVACY.md) accordingly.
 - Create or reference a GitHub issue before feature work, and add user-facing
   entries under `## Unreleased` in `CHANGELOG.md` with the issue number.

@@ -13,8 +13,8 @@ manifest.json
 styles.css
 ```
 
-`main.js` is generated. Human-readable source belongs under `src/` and is bundled
-by `npm run build`. Never hand-edit `main.js` to ship a change.
+`main.js` is generated. Human-readable source belongs under `src/`, and
+`npm run build` bundles that source. Never hand-edit `main.js` to ship a change.
 
 ## Domains
 
@@ -37,9 +37,9 @@ by `npm run build`. Never hand-edit `main.js` to ship a change.
   code and tests (`src/shared/`).
 
 There is no change-tracking or diff domain. An earlier iteration snapshotted the
-vault around edit-capable runs; that was removed, and Pi performs the edits
-directly. `AGENTS.md` still lists `changes/` in its repository map, which is
-stale.
+vault around edit-capable runs, and that domain was removed because Pi performs
+the edits directly. `AGENTS.md` still lists `changes/` in its repository map,
+which is stale.
 
 ## Source layout
 
@@ -128,7 +128,7 @@ src/**/*.js,mjs  --npm run build-->  main.js (CommonJS bundle)
 ```
 
 esbuild bundles `src/main.js` into a CommonJS `main.js` for Obsidian. Three
-packages are deliberately **external** and must never be bundled:
+packages are deliberately external, and you must never bundle them:
 
 ```text
 obsidian
@@ -137,8 +137,8 @@ obsidian
 ```
 
 Bundling CodeMirror would create a second copy of its extension objects, whose
-`instanceof` checks fail against the host editor. `npm run build:check` fails if
-the committed `main.js` is stale.
+`instanceof` checks fail against the host editor. The `npm run build:check`
+command fails if the committed `main.js` is stale.
 
 ## Runtime flow
 
@@ -148,11 +148,12 @@ the committed `main.js` is stale.
    neighborhood, backlinks, tags, search results, explicit attachments, and
    annotations.
 4. The Pi domain formats the prompt and starts one long-lived `pi --mode rpc`
-   process per thread, passing the tool mode, model, reasoning level, and any
-   configured skill paths. When a nono executable is detected, the invocation is
-   wrapped as `nono run --silent --profile <profile> --allow-cwd -- pi ...`
-   first. `--allow-cwd` is required for non-interactive runs because Pi's working
-   directory is the vault; the profile still decides the access level.
+   process per thread. The command passes the tool mode, the model, the
+   reasoning level, and any configured skill paths. When Obsidian detects a
+   nono executable, the plugin wraps the invocation as
+   `nono run --silent --profile <profile> --allow-cwd -- pi ...`. The
+   `--allow-cwd` flag is required for non-interactive runs because Pi's working
+   directory is the vault, and the profile still decides the access level.
 5. The plugin writes a single `prompt` request over the RPC client's stdin. JSON
    events stream back into UI state: thinking, tool activity, text deltas, token
    usage, retries, compaction, and the final answer.
@@ -161,44 +162,46 @@ the committed `main.js` is stale.
 7. The final assistant message, thinking text, and optional token/context usage
    are stored in local thread history.
 
-A one-shot `pi --mode json` path still exists in `src/pi/runner.mjs`, but RPC is
-the primary transport.
+A one-shot `pi --mode json` path still exists in `src/pi/runner.mjs`, but RPC
+remains the primary transport.
 
 ## Tool modes
 
-Selected by `settings.sandboxMode` and translated into Pi CLI flags in
-`buildPiArgs`:
+The `settings.sandboxMode` value selects the mode, and `buildPiArgs` translates
+it into Pi CLI flags:
 
 | Mode                 | Pi flags                                             |
 | -------------------- | ---------------------------------------------------- |
 | Chat                 | `--no-tools`                                         |
 | Review (`read-only`) | `--tools read,grep,find,ls`                          |
 | Edit                 | `--tools read,grep,find,ls,edit,write`               |
-| Full agent           | no `--tools` flag, so Pi's complete set is available |
+| Full agent           | No `--tools` flag, so Pi's complete set is available |
 
-Enabling Edit or Full agent requires an explicit acknowledgement, stored as
-`settings.acknowledgedToolRisk`. Tool modes are **not** an operating-system
-sandbox; Pi runs with the user's privileges unless the optional nono sandbox
-below is active.
+Enabling Edit or Full agent requires an explicit acknowledgement, which is
+stored as `settings.acknowledgedToolRisk`. Tool modes are not an operating
+system sandbox. Pi runs with the user's privileges unless the optional nono
+sandbox below is active.
 
 ## nono sandbox
 
-`src/pi/nono.mjs` resolves whether a run is sandboxed:
+The `src/pi/nono.mjs` module resolves whether a run is sandboxed:
 
 - `findNonoExecutable` (in `src/pi/environment.mjs`) returns `null` when no nono
   executable is found, so an absent sandbox never changes Pi's launch.
 - `resolveNonoWrapper(settings)` returns one of four states: `missing`,
   `disabled`, `profile-required`, or `enabled` with a command and profile.
-- `enabled` is the default whenever nono is detected, using
-  `settings.nonoProfile` (default `obsidian`). A blank profile with the sandbox
-  on resolves to `profile-required`, which blocks the run instead of silently
-  launching Pi unsandboxed.
-- `checkNonoSetup(settings)` validates the profile through `nono profile show`
-  so the settings tab can report a typo before a run starts.
+- The `enabled` state is the default whenever Obsidian detects nono, and it
+  uses `settings.nonoProfile`, which defaults to `obsidian`. A blank profile
+  with the sandbox on resolves to `profile-required`, which blocks the run
+  instead of silently launching Pi without a sandbox.
+- The `checkNonoSetup(settings)` function validates the profile through
+  `nono profile show`, so the settings tab can report a typo before a run
+  starts.
 
-`buildPiProcessInvocation` applies the wrapper, so the RPC client, the one-shot
-JSON path, the catalogs, and the startup warmup all inherit the same behavior.
-Windows keeps its `cmd.exe` quoting branch around the whole wrapped command.
+The `buildPiProcessInvocation` function applies the wrapper, so the RPC client,
+the one-shot JSON path, the catalogs, and the startup warmup all inherit the
+same behavior. On Windows, the `cmd.exe` quoting branch wraps the whole wrapped
+command.
 
 ## Local storage
 
@@ -208,13 +211,13 @@ additionally written as checksummed current/previous backups by
 `chat-history-backup.mjs`. Pi's own session files are written separately as JSONL
 under `pi-sessions/` in the plugin directory.
 
-None of this is encrypted by the plugin. See `PRIVACY.md` for what is sent to Pi
-and the configured model provider.
+The plugin does not encrypt any of this data. See [Privacy](../PRIVACY.md) for
+what the plugin sends to Pi and to the configured model provider.
 
 ## Prompt safety boundaries
 
 Vault content is untrusted input that reaches the model. Two places make that
-explicit and should keep doing so:
+explicit, and you should keep them that way:
 
 - `formatTextAttachmentContext` in `src/ui/prompt-payload.mjs` wraps attached
   file contents in collision-resistant `BEGIN/END UNTRUSTED` boundaries with an
@@ -222,7 +225,7 @@ explicit and should keep doing so:
 - `formatPrompt` in `src/context/context-builder.mjs` carries a matching
   instruction for annotation records.
 
-Note that the plain note/search/attachment JSON blocks in the same prompt do not
+The plain note, search, and attachment JSON blocks in the same prompt do not
 currently carry such a framing. Extending the untrusted-data boundary to the
 whole context packet is a known open item.
 
@@ -233,6 +236,6 @@ whole context packet is a known open item.
   into modules.
 - Keep services independent: the Pi runner should not know about the DOM, and UI
   should not know CLI details beyond callbacks and state.
-- Preserve behavior during module extraction; improve behavior in separate,
+- Preserve behavior during module extraction, and improve behavior in separate,
   reviewable changes.
 - Do not add generated or runtime files to git.
