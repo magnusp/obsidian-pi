@@ -1,0 +1,120 @@
+name: skipLibCheck reminder
+
+# Reports when the `skipLibCheck` escape hatch in tsconfig.json is no longer
+# needed, so it can be reverted instead of silently accumulating. The escape
+# hatch exists because obsidian@1.13.x ships declarations where Menu, Modal, and
+# PopoverSuggest are declared to implement HistoryHandler without
+# onHistoryBack, which fails tsc inside node_modules.
+#
+# The check never fails a pull request. On schedule and dispatch runs it
+# deliberately fails once the flag becomes removable, because that is the only
+# notification channel that works with GitHub Issues disabled.
+
+on:
+  pull_request:
+    paths:
+      - package.json
+      - package-lock.json
+      - tsconfig.json
+  schedule:
+    # Weekly, Monday 06:23 UTC. Off the top of the hour to avoid the
+    # scheduled-run congestion on GitHub Actions.
+    - cron: "23 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: skip-lib-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Check typecheck without skipLibCheck
+    runs-on: ubuntu-latest
+    outputs:
+      removable: ${{ steps.check.outputs.removable }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Overrides the tsconfig value for this run only, so the committed
+      # tsconfig.json is never modified.
+      - name: Typecheck with skipLibCheck disabled
+        id: check
+        run: |
+          # Guard against reporting a false positive. Without this, a branch
+          # that does not carry the skipLibCheck flag would "pass" simply
+          # because there is nothing to remove, and the notify job would open
+          # a tracking issue asking for a flag that was never set.
+          if ! grep -Eq '"skipLibCheck"[[:space:]]*:[[:space:]]*true' tsconfig.json; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "removable=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "## skipLibCheck status"
+              echo
+              echo "No \`\"skipLibCheck\": true\` in \`tsconfig.json\`, so there is nothing to remove."
+              echo "No action needed."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
+          set +e
+          output="$(npx tsc --noEmit --skipLibCheck false 2>&1)"
+          status=$?
+          set -e
+
+          printf '%s\n' "$output"
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+
+          if [ "$status" -eq 0 ]; then
+            echo "removable=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "removable=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          {
+            echo "## skipLibCheck status"
+            echo
+            if [ "$status" -eq 0 ]; then
+              echo "**Action needed:** \`npx tsc --noEmit --skipLibCheck false\` now passes."
+              echo
+              echo "Remove \`\"skipLibCheck\": true\` from \`tsconfig.json\` and re-run \`npm run ci\`."
+            else
+              echo "\`skipLibCheck\` is still required. \`tsc --noEmit --skipLibCheck false\` fails:"
+              echo
+              echo '```'
+              printf '%s\n' "$output"
+              echo '```'
+            fi
+            echo
+            echo "<details><summary>How this is checked</summary>"
+            echo
+            echo "This workflow runs \`npx tsc --noEmit --skipLibCheck false\`, which overrides the"
+            echo "\`tsconfig.json\` setting for one run without changing any tracked file. The flag is"
+            echo "needed only because of defects in a dependency's published type declarations."
+            echo
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Failing the run is the notification. It reaches the repository's
+      # subscribers by email and shows as a red run, which needs no extra
+      # permissions and does not depend on GitHub Issues being enabled. Only
+      # on schedule and dispatch, so a pull request is never blocked by this.
+      - name: Notify that the flag can be removed
+        if: steps.check.outputs.removable == 'true' && github.event_name != 'pull_request'
+        run: |
+          echo "::error title=skipLibCheck can be removed::npx tsc --noEmit --skipLibCheck false now passes. Remove \"skipLibCheck\": true from tsconfig.json, run npm run ci, then delete this workflow."
+          exit 1
