@@ -16,8 +16,6 @@ obsidian-pi-*.zip
 .vscode/
 .idea/
 
-/AGENTS.md
-/docs
 /COMPARISON_TASK.md
 /COMPARED_*.md
 /plan
