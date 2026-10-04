@@ -1,6 +1,6 @@
 # Release process
 
-Pi Agent keeps release assets simple: `main.js`, `manifest.json`, and `styles.css`.
+Pi Agent keeps its release assets simple: `main.js`, `manifest.json`, and `styles.css`.
 
 ## Test locally
 
@@ -13,25 +13,24 @@ npm run ci
 npm run dev:install -- /path/to/vault/.obsidian/plugins/pi-agent
 ```
 
-Or set a reusable target:
+Or set a reusable target directory:
 
 ```bash
 export PI_AGENT_DEV_DIR=/path/to/vault/.obsidian/plugins/pi-agent
 npm run dev:install
 ```
 
-Then reload Obsidian, or disable and re-enable the plugin.
+Reload Obsidian, or disable and re-enable the plugin.
 
 ## Prepare a release
 
-1. Pick the next SemVer version, for example `0.0.2`.
+1. Choose the next SemVer version, for example `0.0.2`.
 2. Update the version in:
    - `manifest.json`
    - `package.json`
    - `versions.json`
    - `CHANGELOG.md`
-3. Regenerate the bundle and run the gate. `npm run ci` never writes, so
-   `npm run build` has to run first or the bundle check fails:
+3. Regenerate the bundle, and then run the gate. The `npm run ci` command never writes to the repository, so you must run `npm run build` first, or the bundle check fails:
 
 ```bash
 npm run build
@@ -48,17 +47,17 @@ git push origin main
 
 ## Publish a release
 
-Create and push a tag that exactly matches the version in `manifest.json` and `package.json`. Use plain SemVer with no suffix: prerelease tags such as `0.0.16-beta.1` do not match the release trigger and could never satisfy the version check.
+Create and push a tag that matches the version in `manifest.json` and `package.json` exactly. Use plain SemVer with no suffix. A prerelease tag such as `0.0.16-beta.1` does not match the release trigger, so it can never satisfy the version check.
 
 ```bash
 git tag 0.0.2
 git push origin 0.0.2
 ```
 
-The GitHub Actions release workflow verifies the quality gate, rebuilds the bundle and checks it against the committed one, extracts the current version's notes from `CHANGELOG.md`, creates a GitHub release, uploads the Obsidian-supported assets, and generates artifact attestations:
+The GitHub Actions release workflow verifies the quality gate, rebuilds the bundle and checks it against the committed bundle, extracts the notes for the current version from `CHANGELOG.md`, creates a GitHub release, uploads the assets that Obsidian supports, and generates artifact attestations:
 
 - `main.js`
 - `manifest.json`
 - `styles.css`
 
-For Obsidian Community Plugins, GitHub release assets are what users receive when they install or update the plugin. Do not attach extra files to the GitHub release; Obsidian only supports the assets above.
+For Obsidian Community plugins, the GitHub release assets are what users receive when they install or update the plugin. Do not attach extra files to the GitHub release, because Obsidian supports only the assets above.

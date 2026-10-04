@@ -1,4 +1,5 @@
 import { PiRpcClient } from "./rpc-client.mjs";
+import { resolveNonoWrapper } from "./nono.mjs";
 
 export const REASONING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 const ESCAPE_CHARACTER = String.fromCharCode(27);
@@ -13,6 +14,7 @@ export class PiModelCatalog {
   async getAvailableModels(vaultBasePath) {
     const client = new PiRpcClient({
       piExecutablePath: this.settings.piExecutablePath,
+      nono: resolveNonoWrapper(this.settings),
       cwd: vaultBasePath ?? this.pluginDirectory,
       args: ["--mode", "rpc", "--no-session", "--no-tools"]
     });

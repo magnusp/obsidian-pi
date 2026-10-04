@@ -1,5 +1,6 @@
 import { getConfiguredSkillPaths } from "../context/skills.mjs";
 import { PiRpcClient } from "./rpc-client.mjs";
+import { resolveNonoWrapper } from "./nono.mjs";
 
 export class PiCommandCatalog {
   constructor(pluginDirectory, settings = {}, extensionUiHandler) {
@@ -11,6 +12,7 @@ export class PiCommandCatalog {
   async getCommands(vaultBasePath) {
     const client = new PiRpcClient({
       piExecutablePath: this.settings.piExecutablePath,
+      nono: resolveNonoWrapper(this.settings),
       cwd: vaultBasePath ?? this.pluginDirectory,
       args: buildCommandDiscoveryArgs(this.settings, vaultBasePath),
       extensionUiHandler: this.extensionUiHandler

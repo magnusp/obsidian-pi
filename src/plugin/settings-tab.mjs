@@ -7,6 +7,7 @@ import {
   getToolModeOptions
 } from "./settings.mjs";
 import { normalizeSkillFolderList } from "../context/skills.mjs";
+import { findNonoExecutable } from "../pi/environment.mjs";
 import { confirmWithModal } from "../ui/modals/confirm-modal.mjs";
 import { ModelPickerModal, ThinkingPickerModal } from "../ui/modals/model-picker-modal.mjs";
 import { requestDesktopNotificationPermission } from "../ui/desktop-notifications.mjs";
@@ -40,7 +41,14 @@ export class PiAgentSettingTab extends PluginSettingTab {
       {
         type: "group",
         heading: "Pi CLI",
-        items: [this.getPiExecutableDefinition(), this.getPiInstallationDefinition()]
+        items: [
+          this.getPiExecutableDefinition(),
+          this.getPiInstallationDefinition(),
+          this.getNonoSandboxDefinition(),
+          this.getNonoProfileDefinition(),
+          this.getNonoExecutableDefinition(),
+          this.getNonoInstallationDefinition()
+        ]
       },
       {
         type: "group",
@@ -307,6 +315,79 @@ export class PiAgentSettingTab extends PluginSettingTab {
             this.plugin.checkPiInstallation(true);
           })
         )
+    };
+  }
+
+  getNonoExecutablePath() {
+    return findNonoExecutable(this.plugin.settings.nonoExecutablePath);
+  }
+
+  getNonoSandboxDefinition() {
+    return {
+      name: "Run Pi inside a nono sandbox",
+      desc: this.getNonoExecutablePath()
+        ? "Launch Pi through nono so its filesystem and network access is mediated by the operating system. On by default when nono is detected."
+        : "nono was not found on PATH. Install it, then fully restart Obsidian.",
+      render: (setting) => {
+        const control = setting.addToggle((toggle) =>
+          toggle.setValue(this.plugin.settings.nonoEnabled !== false).onChange(async (value) => {
+            this.plugin.settings.nonoEnabled = value;
+            await this.plugin.saveSettings();
+          })
+        );
+        if (!this.getNonoExecutablePath()) control.setDisabled(true);
+      }
+    };
+  }
+
+  getNonoProfileDefinition() {
+    return {
+      name: "Nono profile",
+      desc: "Profile name or path nono applies to every Pi launch. Required while the sandbox is enabled.",
+      render: (setting) => {
+        if (!this.getNonoExecutablePath()) return;
+
+        setting.addText((text) =>
+          text
+            .setPlaceholder("/etc/profiles/nono/profile.json")
+            .setValue(this.plugin.settings.nonoProfile)
+            .onChange(async (value) => {
+              this.plugin.settings.nonoProfile = value.trim();
+              await this.plugin.saveSettings();
+            })
+        );
+      }
+    };
+  }
+
+  getNonoExecutableDefinition() {
+    return {
+      name: "nono executable path",
+      desc: "Optional path to nono. Leave empty to detect it on PATH. Supports ~ and environment variables like ${USER}.",
+      render: (setting) =>
+        setting.addText((text) =>
+          text
+            .setPlaceholder("/opt/homebrew/bin/nono")
+            .setValue(this.plugin.settings.nonoExecutablePath)
+            .onChange(async (value) => {
+              this.plugin.settings.nonoExecutablePath = value.trim();
+              await this.plugin.saveSettings();
+              this.display();
+            })
+        )
+    };
+  }
+
+  getNonoInstallationDefinition() {
+    return {
+      name: "Check nono setup",
+      desc: "Verify that Obsidian can run nono and resolve the configured profile.",
+      render: (setting) => {
+        const button = setting.addButton((button) =>
+          button.setButtonText("Check").onClick(() => this.plugin.checkNonoSetup(true))
+        );
+        if (!this.getNonoExecutablePath()) button.setDisabled(true);
+      }
     };
   }
 

@@ -15,6 +15,7 @@ import {
 } from "../pi/extension-ui.mjs";
 import { PiModelCatalog } from "../pi/model-catalog.mjs";
 import { getCompactInstructions, PiRunner } from "../pi/runner.mjs";
+import { checkNonoSetup } from "../pi/nono.mjs";
 import { CUSTOM_MODEL_VALUE as b, DEFAULT_SETTINGS as H, normalizeSettings } from "./settings.mjs";
 import { PiAgentSettingTab } from "./settings-tab.mjs";
 import {
@@ -169,7 +170,7 @@ export class PiAgentPlugin extends P.Plugin {
     this.annotationController.start();
 
     if (!this.settings.dryRun) {
-      warmupPiCli(this.settings.piExecutablePath, this.getPluginDirectory());
+      warmupPiCli(this.settings.piExecutablePath, this.getPluginDirectory(), this.settings);
     }
 
     this.refreshCurrentContextFile();
@@ -395,6 +396,11 @@ export class PiAgentPlugin extends P.Plugin {
 
     showSuccess ? new P.Notice(e.message) : new PiSetupModal(this, e).open();
     return e;
+  }
+  checkNonoSetup(showResult) {
+    const result = checkNonoSetup(this.settings);
+    if (showResult) new P.Notice(result.message);
+    return result;
   }
   async refreshModelCatalog(showNotice = false, force = true) {
     if (!force && !needsRuntimeCatalogRefresh(this.settings, this.modelCatalogRefreshedAt)) {

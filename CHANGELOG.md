@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added an optional nono sandbox. When a `nono` executable is detected on the path Obsidian uses, every Pi launch (chat runs, the persistent RPC session, the model and command catalogs, and the startup warmup) becomes `nono run --silent --profile <profile> -- pi ...`. The sandbox is on by default once nono is detected and requires a profile name (default `obsidian`) in the Pi CLI settings group, with a check button that validates the profile through `nono profile show`. Pi launches exactly as before when nono is absent, a blank profile blocks the run instead of falling back to an unsandboxed launch, and sandbox denials are reported with `nono why` remediation. (#14)
+
 - Fixed the release quality gate so it can no longer pass with a stale `main.js`: `npm run ci` verifies without writing, `build:check` now compares a fresh in-memory build against the committed bundle, and the release workflow rebuilds and fails if its output differs from what was committed, so a tag on a commit that skipped a rebuild cannot publish an out-of-date bundle.
 - Added Dependabot for npm and GitHub Actions updates, so the advisory `overrides` in `package.json` and the pinned action SHAs stop depending on someone noticing.
 - Added a full-tree `npm audit --audit-level=high` gate to the Security workflow. The dependency review only saw what a pull request touched, so an advisory disclosed against a version already in the lockfile went unreported; the audit also covers the devDependencies that execute during the build.

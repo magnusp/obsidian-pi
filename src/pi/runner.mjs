@@ -7,6 +7,7 @@ import { createContextUsage } from "./token-usage.mjs";
 import { createPiCliError, formatPiCliFailure } from "./diagnostics.mjs";
 import { buildPiProcessInvocation, findPiExecutable } from "./environment.mjs";
 import { handlePiJsonEventLine } from "./events.mjs";
+import { resolveNonoWrapper } from "./nono.mjs";
 import { PiRpcClient } from "./rpc-client.mjs";
 import { toRpcImages } from "../ui/prompt-payload.mjs";
 
@@ -117,6 +118,7 @@ export class PiRunner {
     const session = this.resolveOrCreateSession(sessionReference);
     const client = new PiRpcClient({
       piExecutablePath: this.settings.piExecutablePath,
+      nono: resolveNonoWrapper(this.settings),
       cwd: this.workingDirectory ?? this.pluginDirectory,
       args: this.buildPiArgs(session.path, "rpc"),
       extensionUiHandler: this.extensionUiHandler
@@ -240,6 +242,7 @@ export class PiRunner {
       const piExecutable = findPiExecutable(this.settings.piExecutablePath);
       const invocation = buildPiProcessInvocation(piExecutable, args, {
         cwd: this.workingDirectory ?? this.pluginDirectory,
+        nono: this.getNonoWrapper(),
         detached: process.platform !== "win32"
       });
       const child = spawn(invocation.command, invocation.args, invocation.options);
@@ -463,6 +466,14 @@ export class PiRunner {
     return modelId
       ? this.settings.availableModels.find((model) => model.slug === modelId)
       : undefined;
+  }
+
+  getNonoWrapper() {
+    // A blank profile with the sandbox enabled is a settings mistake, not a reason to
+    // silently launch Pi unsandboxed, so block the run instead.
+    const wrapper = resolveNonoWrapper(this.settings);
+    if (wrapper.state === "profile-required") throw new Error(wrapper.message);
+    return wrapper;
   }
 
   buildPiArgs(sessionId, mode = "rpc") {

@@ -1861,6 +1861,368 @@ function truncate(value, limit) {
   return text.length > limit ? `${text.slice(0, limit - 1)}\u2026` : text;
 }
 
+// src/pi/nono.mjs
+var import_node_child_process = require("node:child_process");
+
+// src/pi/environment.mjs
+var import_node_fs = __toESM(require("node:fs"), 1);
+var import_node_path = __toESM(require("node:path"), 1);
+var POSIX_PI_CANDIDATES = ["/opt/homebrew/bin/pi", "/usr/local/bin/pi", "/usr/bin/pi"];
+var WINDOWS_PI_CANDIDATES = ["pi.cmd", "pi.exe", "pi"];
+var POSIX_NONO_CANDIDATES = ["nono"];
+var WINDOWS_NONO_CANDIDATES = ["nono.cmd", "nono.exe", "nono"];
+var POSIX_PATH_CANDIDATES = [
+  "/opt/homebrew/bin",
+  "/usr/local/bin",
+  "/usr/bin",
+  "/bin",
+  "/usr/sbin",
+  "/sbin"
+];
+function findPiExecutable(configuredPath = "") {
+  const configuredExecutable = normalizePiExecutablePath(configuredPath);
+  if (configuredExecutable) return configuredExecutable;
+  if (process.platform === "win32") return WINDOWS_PI_CANDIDATES[0];
+  for (const candidate of POSIX_PI_CANDIDATES) {
+    if (import_node_fs.default.existsSync(candidate)) return candidate;
+  }
+  const piNode = findPiNodeExecutable();
+  if (piNode) return piNode;
+  return "pi";
+}
+function findNonoExecutable(configuredPath = "") {
+  const configuredExecutable = normalizePiExecutablePath(configuredPath);
+  if (configuredExecutable) return configuredExecutable;
+  const candidates = process.platform === "win32" ? WINDOWS_NONO_CANDIDATES : POSIX_NONO_CANDIDATES;
+  const directories = uniqueExistingDirectories([
+    ...getExistingPathEntries(),
+    ...POSIX_PATH_CANDIDATES,
+    ...getNodeVersionManagerDirectories()
+  ]);
+  for (const directory of directories) {
+    for (const candidate of candidates) {
+      const executable = import_node_path.default.join(directory, candidate);
+      if (import_node_fs.default.existsSync(executable)) return executable;
+    }
+  }
+  return null;
+}
+function normalizePiExecutablePath(executablePath) {
+  const normalizedPath = typeof executablePath === "string" ? executablePath.trim() : "";
+  if (!normalizedPath) return "";
+  return expandEnvironmentVariables(expandHomeDirectory(normalizedPath));
+}
+function expandHomeDirectory(executablePath) {
+  const home = process.env.HOME;
+  if (!home) return executablePath;
+  if (executablePath === "~") return home;
+  return executablePath.startsWith(`~${import_node_path.default.sep}`)
+    ? import_node_path.default.join(home, executablePath.slice(2))
+    : executablePath;
+}
+function expandEnvironmentVariables(executablePath) {
+  return executablePath.replace(/\$(\w+)|\$\{([^}]+)\}/g, (match, name, bracedName) => {
+    const value = process.env[name || bracedName];
+    return value === void 0 ? match : value;
+  });
+}
+function findPiNodeExecutable() {
+  const home = process.env.HOME;
+  if (!home) return null;
+  const root = import_node_path.default.join(home, ".local", "share", "pi-node");
+  try {
+    const versions = import_node_fs.default
+      .readdirSync(root, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => import_node_path.default.join(root, d.name));
+    for (const v of versions) {
+      const candidate = import_node_path.default.join(v, "bin", "pi");
+      if (import_node_fs.default.existsSync(candidate)) return candidate;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+function buildPiProcessInvocation(piExecutable, args = [], options = {}) {
+  const processOptions = buildPiProcessOptions(piExecutable, options);
+  const target = wrapPiInvocationWithNono({ command: piExecutable, args }, options.nono);
+  return shouldUseWindowsCommandShell(target.command)
+    ? {
+        command: process.env.ComSpec || "cmd.exe",
+        args: ["/d", "/s", "/c", quoteWindowsCommand([target.command, ...target.args])],
+        options: {
+          ...processOptions,
+          windowsVerbatimArguments: true
+        }
+      }
+    : {
+        command: target.command,
+        args: target.args,
+        options: processOptions
+      };
+}
+function wrapPiInvocationWithNono({ command, args }, nono) {
+  const profile = typeof nono?.profile === "string" ? nono.profile.trim() : "";
+  if (!nono?.command || !profile) return { command, args };
+  return {
+    command: nono.command,
+    // nono refuses any CWD access in non-interactive mode, and Pi runs with the
+    // vault as its working directory. --allow-cwd only authorizes the profile's
+    // configured level (read-only unless the profile raises it), so the profile
+    // still decides how much Pi can reach.
+    args: ["run", "--silent", "--profile", profile, "--allow-cwd", "--", command, ...args]
+  };
+}
+function buildPiProcessOptions(piExecutable = findPiExecutable(), options = {}) {
+  const { nono, ...spawnOptions } = options;
+  return {
+    ...spawnOptions,
+    env: buildPiProcessEnv(piExecutable, nono?.command ? [nono.command] : [])
+  };
+}
+function buildPiProcessEnv(piExecutable = findPiExecutable(), extraExecutables = []) {
+  if (process.platform === "win32") return process.env;
+  return {
+    ...process.env,
+    PATH: buildPosixPath(piExecutable, extraExecutables)
+  };
+}
+function shouldUseWindowsCommandShell(piExecutable) {
+  return process.platform === "win32" && !/\.exe$/i.test(piExecutable);
+}
+function quoteWindowsCommand(parts) {
+  const command = parts.map((part) => `"${String(part).replace(/"/g, '""')}"`).join(" ");
+  return `"${command}"`;
+}
+function buildPosixPath(piExecutable, extraExecutables = []) {
+  return uniqueExistingDirectories([
+    ...getExecutableDirectory(piExecutable),
+    ...extraExecutables.flatMap((executable) => getExecutableDirectory(executable)),
+    ...POSIX_PATH_CANDIDATES,
+    ...getPiNodePaths(),
+    ...getNodeVersionManagerDirectories(),
+    ...getExistingPathEntries()
+  ]).join(import_node_path.default.delimiter);
+}
+function getPiNodePaths() {
+  const home = process.env.HOME;
+  if (!home) return [];
+  const root = import_node_path.default.join(home, ".local", "share", "pi-node");
+  try {
+    return import_node_fs.default
+      .readdirSync(root, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => import_node_path.default.join(root, d.name, "bin"));
+  } catch {
+    return [];
+  }
+}
+function getExistingPathEntries() {
+  return (process.env.PATH ?? "").split(import_node_path.default.delimiter).filter(Boolean);
+}
+function getExecutableDirectory(executable) {
+  return import_node_path.default.isAbsolute(executable)
+    ? [import_node_path.default.dirname(executable)]
+    : [];
+}
+function getNodeVersionManagerDirectories() {
+  const home = process.env.HOME;
+  if (!home) return [];
+  return [
+    ...getNvmNodeBinDirectories(import_node_path.default.join(home, ".nvm", "versions", "node")),
+    ...getFnmNodeBinDirectories(import_node_path.default.join(home, ".fnm", "node-versions")),
+    import_node_path.default.join(home, ".asdf", "shims"),
+    import_node_path.default.join(home, ".volta", "bin")
+  ];
+}
+function getNvmNodeBinDirectories(root) {
+  return getChildDirectories(root).map((directory) =>
+    import_node_path.default.join(directory, "bin")
+  );
+}
+function getFnmNodeBinDirectories(root) {
+  return getChildDirectories(root).map((directory) =>
+    import_node_path.default.join(directory, "installation", "bin")
+  );
+}
+function getChildDirectories(root) {
+  try {
+    return import_node_fs.default
+      .readdirSync(root, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => import_node_path.default.join(root, entry.name));
+  } catch {
+    return [];
+  }
+}
+function uniqueExistingDirectories(directories) {
+  const seen = /* @__PURE__ */ new Set();
+  return directories.filter((directory) => {
+    if (!directory || seen.has(directory) || !import_node_fs.default.existsSync(directory))
+      return false;
+    seen.add(directory);
+    return true;
+  });
+}
+
+// src/pi/diagnostics.mjs
+var PI_INSTALL_COMMAND = "npm install -g @earendil-works/pi-coding-agent";
+var PI_CLI_MISSING_MESSAGE = `Pi CLI was not found. Install it with \`${PI_INSTALL_COMMAND}\`, then restart Obsidian so it can find \`pi\` on PATH.`;
+var NODE_RUNTIME_MISSING_MESSAGE =
+  "Pi CLI was found, but Node.js is not available to Obsidian. Install Node.js, then fully restart Obsidian. If you use nvm, fnm, asdf, or another version manager, make sure its Node bin directory is available to GUI apps or install Node with Homebrew/the official installer.";
+var NODE_RUNTIME_MISSING_PATTERNS = [
+  /env:\s*node:\s*No such file or directory/i,
+  /usr\/bin\/env:\s*['"]?node['"]?:\s*No such file or directory/i,
+  /\/usr\/bin\/env:\s*node:\s*No such file or directory/i,
+  /spawn\s+node\s+ENOENT/i
+];
+var NONO_PROFILE_MISSING_PATTERNS = [/nono:\s*profile not found/i, /unknown profile/i];
+var NONO_DENIAL_PATTERNS = [
+  /nono:\s*tool-sandbox denied/i,
+  /\bdenied via\b/i,
+  /\bdenied for family=/i,
+  /\bdenied:\s/i,
+  /endpoint denied by policy/i,
+  /\bapproval denied\b/i,
+  /blocked by policy group/i,
+  /blocked by trust policy/i
+];
+var NONO_DENIAL_REMEDIATION =
+  "Run `nono why --self --path <path> --op read|write` to see which grants cover that path, then widen the profile with `nono profile promote <name>`.";
+var NONO_PROFILE_UNRESOLVED_HINT =
+  "Create it with `nono profile init <name>`, then apply it with `nono profile promote <name>`.";
+function createPiCliError(options = {}) {
+  return new Error(formatPiCliFailure(options));
+}
+function formatPiCliFailure(options = {}) {
+  return diagnosePiCliFailure(options).message;
+}
+function diagnosePiCliFailure({
+  context = "Could not run Pi CLI",
+  error,
+  stderr,
+  stdout,
+  exitCode
+} = {}) {
+  const text = getCombinedErrorText(error, stderr, stdout);
+  if (isPiCliMissing(error)) return { kind: "pi-missing", message: PI_CLI_MISSING_MESSAGE };
+  if (isNodeRuntimeMissing(text)) {
+    return { kind: "node-missing", message: NODE_RUNTIME_MISSING_MESSAGE };
+  }
+  const detail =
+    text || (typeof exitCode === "number" ? `Pi exited with code ${exitCode}.` : "Unknown error.");
+  return { kind: "generic", message: `${context}: ${detail}` };
+}
+function isNodeRuntimeMissing(text = "") {
+  return NODE_RUNTIME_MISSING_PATTERNS.some((pattern) => pattern.test(text));
+}
+function isPiCliMissing(error) {
+  return error && error.code === "ENOENT";
+}
+function diagnoseNonoFailure({ context = "nono failed", error, stderr, stdout, exitCode } = {}) {
+  const text = getCombinedErrorText(error, stderr, stdout);
+  if (isNonoProfileMissing(text)) {
+    return {
+      kind: "nono-profile-missing",
+      message: `nono could not resolve the configured profile. ${NONO_PROFILE_UNRESOLVED_HINT}`
+    };
+  }
+  if (isNonoDenial(text)) {
+    return {
+      kind: "nono-denied",
+      message: `nono denied an operation the agent attempted. ${NONO_DENIAL_REMEDIATION}
+${text}`
+    };
+  }
+  const detail =
+    text ||
+    (typeof exitCode === "number" ? `nono exited with code ${exitCode}.` : "Unknown error.");
+  return { kind: "generic", message: `${context}: ${detail}` };
+}
+function isNonoProfileMissing(text = "") {
+  return NONO_PROFILE_MISSING_PATTERNS.some((pattern) => pattern.test(text));
+}
+function isNonoDenial(text = "") {
+  return NONO_DENIAL_PATTERNS.some((pattern) => pattern.test(text));
+}
+function getCombinedErrorText(error, stderr, stdout) {
+  return [getErrorMessage(error), stderr, stdout]
+    .filter(Boolean)
+    .map((value) => String(value).trim())
+    .filter(Boolean)
+    .join("\n");
+}
+function getErrorMessage(error) {
+  if (!error) return "";
+  return error instanceof Error ? error.message : String(error);
+}
+
+// src/pi/nono.mjs
+var DEFAULT_NONO_PROFILE = "obsidian";
+var NONO_MISSING_MESSAGE =
+  "nono was not found on PATH. Pi Agent launches Pi directly unless a nono executable is available.";
+var NONO_PROFILE_REQUIRED_MESSAGE = `Pi Agent runs Pi inside nono, so a nono profile name is required. Set one in Settings > Pi Agent > Pi CLI, for example "${DEFAULT_NONO_PROFILE}".`;
+var NONO_STATE_ENABLED = "enabled";
+var NONO_STATE_DISABLED = "disabled";
+var NONO_STATE_MISSING = "missing";
+var NONO_STATE_PROFILE_REQUIRED = "profile-required";
+function resolveNonoWrapper(
+  settings = {},
+  executable = findNonoExecutable(settings.nonoExecutablePath)
+) {
+  if (!executable) return { state: NONO_STATE_MISSING, message: NONO_MISSING_MESSAGE };
+  if (settings.nonoEnabled === false) {
+    return { state: NONO_STATE_DISABLED, message: "Pi runs without a nono sandbox." };
+  }
+  const profile = normalizeProfileName(settings.nonoProfile);
+  if (!profile) {
+    return { state: NONO_STATE_PROFILE_REQUIRED, message: NONO_PROFILE_REQUIRED_MESSAGE };
+  }
+  return {
+    state: NONO_STATE_ENABLED,
+    command: executable,
+    profile,
+    message: `nono profile: ${profile}`
+  };
+}
+function normalizeProfileName(profile) {
+  return typeof profile === "string" ? profile.trim() : "";
+}
+function checkNonoSetup(settings = {}, executable) {
+  const wrapper = resolveNonoWrapper(settings, executable);
+  if (wrapper.state === NONO_STATE_MISSING || wrapper.state === NONO_STATE_DISABLED) return wrapper;
+  const invocation = buildPiProcessInvocation(
+    wrapper.command,
+    ["profile", "show", wrapper.profile],
+    {
+      silent: true,
+      windowsHide: true
+    }
+  );
+  const result = (0, import_node_child_process.spawnSync)(invocation.command, invocation.args, {
+    ...invocation.options,
+    encoding: "utf8",
+    timeout: 5e3
+  });
+  if (result.error) {
+    return {
+      ...wrapper,
+      ok: false,
+      message: `Could not run ${wrapper.command}: ${result.error.message}`
+    };
+  }
+  if (result.status !== 0) {
+    const diagnostic = diagnoseNonoFailure({
+      stderr: result.stderr,
+      stdout: result.stdout,
+      exitCode: result.status
+    });
+    return { ...wrapper, ok: false, message: diagnostic.message };
+  }
+  return { ...wrapper, ok: true, message: `nono profile "${wrapper.profile}" is available.` };
+}
+
 // src/plugin/settings.mjs
 var CUSTOM_MODEL_VALUE = "__custom";
 var REASONING_LABELS = {
@@ -1883,6 +2245,11 @@ var DEFAULT_SETTINGS = {
   ignoredFolders: [".git", "node_modules", "Templates"],
   customInstructions: "",
   piExecutablePath: "",
+  // nono is auto-enabled so an installed sandbox applies without a hunt for a toggle.
+  // It is only honored when a nono executable is actually detected.
+  nonoEnabled: true,
+  nonoProfile: DEFAULT_NONO_PROFILE,
+  nonoExecutablePath: "",
   includeDefaultSkills: true,
   additionalSkillFolders: [],
   effectiveModel: "",
@@ -1915,6 +2282,9 @@ function normalizeSettings(rawSettings = {}) {
   );
   settings.customInstructions = normalizeString(settings.customInstructions);
   settings.piExecutablePath = normalizeString(settings.piExecutablePath);
+  settings.nonoEnabled = settings.nonoEnabled !== false;
+  settings.nonoProfile = normalizeString(settings.nonoProfile);
+  settings.nonoExecutablePath = normalizeString(settings.nonoExecutablePath);
   settings.includeDefaultSkills = settings.includeDefaultSkills !== false;
   settings.additionalSkillFolders = normalizeStringList(settings.additionalSkillFolders, []);
   settings.effectiveModel = normalizeString(settings.effectiveModel);
@@ -2468,7 +2838,7 @@ function formatContextShowResponse(inspection) {
 }
 
 // src/context/skills.mjs
-var import_node_path = __toESM(require("node:path"), 1);
+var import_node_path2 = __toESM(require("node:path"), 1);
 
 // src/shared/paths.mjs
 function normalizeVaultFolder(value, fallback = "Pi") {
@@ -2504,15 +2874,15 @@ function getConfiguredSkillPaths(settings, basePath) {
 function resolveSkillPath(skillPath, basePath) {
   const configured = String(skillPath || "").trim();
   if (!configured || configured.startsWith("~")) return "";
-  if (import_node_path.default.isAbsolute(configured))
-    return import_node_path.default.normalize(configured);
+  if (import_node_path2.default.isAbsolute(configured))
+    return import_node_path2.default.normalize(configured);
   if (!basePath) return "";
-  const base = import_node_path.default.resolve(basePath);
-  const resolved = import_node_path.default.resolve(base, configured);
-  const relative = import_node_path.default.relative(base, resolved);
+  const base = import_node_path2.default.resolve(basePath);
+  const resolved = import_node_path2.default.resolve(base, configured);
+  const relative = import_node_path2.default.relative(base, resolved);
   return relative === ".." ||
-    relative.startsWith(`..${import_node_path.default.sep}`) ||
-    import_node_path.default.isAbsolute(relative)
+    relative.startsWith(`..${import_node_path2.default.sep}`) ||
+    import_node_path2.default.isAbsolute(relative)
     ? ""
     : resolved;
 }
@@ -2820,239 +3190,19 @@ var VaultGraph = class {
 };
 
 // src/pi/health.mjs
-var import_node_child_process = require("node:child_process");
-
-// src/pi/diagnostics.mjs
-var PI_INSTALL_COMMAND = "npm install -g @earendil-works/pi-coding-agent";
-var PI_CLI_MISSING_MESSAGE = `Pi CLI was not found. Install it with \`${PI_INSTALL_COMMAND}\`, then restart Obsidian so it can find \`pi\` on PATH.`;
-var NODE_RUNTIME_MISSING_MESSAGE =
-  "Pi CLI was found, but Node.js is not available to Obsidian. Install Node.js, then fully restart Obsidian. If you use nvm, fnm, asdf, or another version manager, make sure its Node bin directory is available to GUI apps or install Node with Homebrew/the official installer.";
-var NODE_RUNTIME_MISSING_PATTERNS = [
-  /env:\s*node:\s*No such file or directory/i,
-  /usr\/bin\/env:\s*['"]?node['"]?:\s*No such file or directory/i,
-  /\/usr\/bin\/env:\s*node:\s*No such file or directory/i,
-  /spawn\s+node\s+ENOENT/i
-];
-function createPiCliError(options = {}) {
-  return new Error(formatPiCliFailure(options));
-}
-function formatPiCliFailure(options = {}) {
-  return diagnosePiCliFailure(options).message;
-}
-function diagnosePiCliFailure({
-  context = "Could not run Pi CLI",
-  error,
-  stderr,
-  stdout,
-  exitCode
-} = {}) {
-  const text = getCombinedErrorText(error, stderr, stdout);
-  if (isPiCliMissing(error)) return { kind: "pi-missing", message: PI_CLI_MISSING_MESSAGE };
-  if (isNodeRuntimeMissing(text)) {
-    return { kind: "node-missing", message: NODE_RUNTIME_MISSING_MESSAGE };
-  }
-  const detail =
-    text || (typeof exitCode === "number" ? `Pi exited with code ${exitCode}.` : "Unknown error.");
-  return { kind: "generic", message: `${context}: ${detail}` };
-}
-function isNodeRuntimeMissing(text = "") {
-  return NODE_RUNTIME_MISSING_PATTERNS.some((pattern) => pattern.test(text));
-}
-function isPiCliMissing(error) {
-  return error && error.code === "ENOENT";
-}
-function getCombinedErrorText(error, stderr, stdout) {
-  return [getErrorMessage(error), stderr, stdout]
-    .filter(Boolean)
-    .map((value) => String(value).trim())
-    .filter(Boolean)
-    .join("\n");
-}
-function getErrorMessage(error) {
-  if (!error) return "";
-  return error instanceof Error ? error.message : String(error);
-}
-
-// src/pi/environment.mjs
-var import_node_fs = __toESM(require("node:fs"), 1);
-var import_node_path2 = __toESM(require("node:path"), 1);
-var POSIX_PI_CANDIDATES = ["/opt/homebrew/bin/pi", "/usr/local/bin/pi", "/usr/bin/pi"];
-var WINDOWS_PI_CANDIDATES = ["pi.cmd", "pi.exe", "pi"];
-var POSIX_PATH_CANDIDATES = [
-  "/opt/homebrew/bin",
-  "/usr/local/bin",
-  "/usr/bin",
-  "/bin",
-  "/usr/sbin",
-  "/sbin"
-];
-function findPiExecutable(configuredPath = "") {
-  const configuredExecutable = normalizePiExecutablePath(configuredPath);
-  if (configuredExecutable) return configuredExecutable;
-  if (process.platform === "win32") return WINDOWS_PI_CANDIDATES[0];
-  for (const candidate of POSIX_PI_CANDIDATES) {
-    if (import_node_fs.default.existsSync(candidate)) return candidate;
-  }
-  const piNode = findPiNodeExecutable();
-  if (piNode) return piNode;
-  return "pi";
-}
-function normalizePiExecutablePath(executablePath) {
-  const normalizedPath = typeof executablePath === "string" ? executablePath.trim() : "";
-  if (!normalizedPath) return "";
-  return expandEnvironmentVariables(expandHomeDirectory(normalizedPath));
-}
-function expandHomeDirectory(executablePath) {
-  const home = process.env.HOME;
-  if (!home) return executablePath;
-  if (executablePath === "~") return home;
-  return executablePath.startsWith(`~${import_node_path2.default.sep}`)
-    ? import_node_path2.default.join(home, executablePath.slice(2))
-    : executablePath;
-}
-function expandEnvironmentVariables(executablePath) {
-  return executablePath.replace(/\$(\w+)|\$\{([^}]+)\}/g, (match, name, bracedName) => {
-    const value = process.env[name || bracedName];
-    return value === void 0 ? match : value;
-  });
-}
-function findPiNodeExecutable() {
-  const home = process.env.HOME;
-  if (!home) return null;
-  const root = import_node_path2.default.join(home, ".local", "share", "pi-node");
-  try {
-    const versions = import_node_fs.default
-      .readdirSync(root, { withFileTypes: true })
-      .filter((d) => d.isDirectory())
-      .map((d) => import_node_path2.default.join(root, d.name));
-    for (const v of versions) {
-      const candidate = import_node_path2.default.join(v, "bin", "pi");
-      if (import_node_fs.default.existsSync(candidate)) return candidate;
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
-function buildPiProcessInvocation(piExecutable, args = [], options = {}) {
-  const processOptions = buildPiProcessOptions(piExecutable, options);
-  return shouldUseWindowsCommandShell(piExecutable)
-    ? {
-        command: process.env.ComSpec || "cmd.exe",
-        args: ["/d", "/s", "/c", quoteWindowsCommand([piExecutable, ...args])],
-        options: {
-          ...processOptions,
-          windowsVerbatimArguments: true
-        }
-      }
-    : {
-        command: piExecutable,
-        args,
-        options: processOptions
-      };
-}
-function buildPiProcessOptions(piExecutable = findPiExecutable(), options = {}) {
-  return {
-    ...options,
-    env: buildPiProcessEnv(piExecutable)
-  };
-}
-function buildPiProcessEnv(piExecutable = findPiExecutable()) {
-  if (process.platform === "win32") return process.env;
-  return {
-    ...process.env,
-    PATH: buildPosixPath(piExecutable)
-  };
-}
-function shouldUseWindowsCommandShell(piExecutable) {
-  return process.platform === "win32" && !/\.exe$/i.test(piExecutable);
-}
-function quoteWindowsCommand(parts) {
-  const command = parts.map((part) => `"${String(part).replace(/"/g, '""')}"`).join(" ");
-  return `"${command}"`;
-}
-function buildPosixPath(piExecutable) {
-  return uniqueExistingDirectories([
-    ...getExecutableDirectory(piExecutable),
-    ...POSIX_PATH_CANDIDATES,
-    ...getPiNodePaths(),
-    ...getNodeVersionManagerDirectories(),
-    ...getExistingPathEntries()
-  ]).join(import_node_path2.default.delimiter);
-}
-function getPiNodePaths() {
-  const home = process.env.HOME;
-  if (!home) return [];
-  const root = import_node_path2.default.join(home, ".local", "share", "pi-node");
-  try {
-    return import_node_fs.default
-      .readdirSync(root, { withFileTypes: true })
-      .filter((d) => d.isDirectory())
-      .map((d) => import_node_path2.default.join(root, d.name, "bin"));
-  } catch {
-    return [];
-  }
-}
-function getExistingPathEntries() {
-  return (process.env.PATH ?? "").split(import_node_path2.default.delimiter).filter(Boolean);
-}
-function getExecutableDirectory(executable) {
-  return import_node_path2.default.isAbsolute(executable)
-    ? [import_node_path2.default.dirname(executable)]
-    : [];
-}
-function getNodeVersionManagerDirectories() {
-  const home = process.env.HOME;
-  if (!home) return [];
-  return [
-    ...getNvmNodeBinDirectories(import_node_path2.default.join(home, ".nvm", "versions", "node")),
-    ...getFnmNodeBinDirectories(import_node_path2.default.join(home, ".fnm", "node-versions")),
-    import_node_path2.default.join(home, ".asdf", "shims"),
-    import_node_path2.default.join(home, ".volta", "bin")
-  ];
-}
-function getNvmNodeBinDirectories(root) {
-  return getChildDirectories(root).map((directory) =>
-    import_node_path2.default.join(directory, "bin")
-  );
-}
-function getFnmNodeBinDirectories(root) {
-  return getChildDirectories(root).map((directory) =>
-    import_node_path2.default.join(directory, "installation", "bin")
-  );
-}
-function getChildDirectories(root) {
-  try {
-    return import_node_fs.default
-      .readdirSync(root, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => import_node_path2.default.join(root, entry.name));
-  } catch {
-    return [];
-  }
-}
-function uniqueExistingDirectories(directories) {
-  const seen = /* @__PURE__ */ new Set();
-  return directories.filter((directory) => {
-    if (!directory || seen.has(directory) || !import_node_fs.default.existsSync(directory))
-      return false;
-    seen.add(directory);
-    return true;
-  });
-}
-
-// src/pi/health.mjs
+var import_node_child_process2 = require("node:child_process");
 var MINIMUM_PI_VERSION = "0.80.0";
-function warmupPiCli(piExecutablePath = "", cwd) {
+function warmupPiCli(piExecutablePath = "", cwd, settings = {}) {
   try {
     const piExecutable = findPiExecutable(piExecutablePath);
     const invocation = buildPiProcessInvocation(piExecutable, ["--version"], {
       ...(cwd ? { cwd } : {}),
+      nono: resolveNonoWrapper(settings),
       detached: process.platform !== "win32",
       stdio: "ignore",
       windowsHide: true
     });
-    const child = (0, import_node_child_process.spawn)(
+    const child = (0, import_node_child_process2.spawn)(
       invocation.command,
       invocation.args,
       invocation.options
@@ -3067,7 +3217,7 @@ function checkPiInstallation(piExecutablePath = "") {
     encoding: "utf8",
     timeout: 5e3
   });
-  const result = (0, import_node_child_process.spawnSync)(
+  const result = (0, import_node_child_process2.spawnSync)(
     invocation.command,
     invocation.args,
     invocation.options
@@ -3150,7 +3300,7 @@ function compareVersions(left, right) {
 }
 
 // src/pi/rpc-client.mjs
-var import_node_child_process2 = require("node:child_process");
+var import_node_child_process3 = require("node:child_process");
 var import_node_string_decoder = require("node:string_decoder");
 var import_node_timers = require("node:timers");
 
@@ -3268,6 +3418,10 @@ function formatPiCapabilityFailure(command, error) {
   const detail = error instanceof Error ? error.message : String(error || "Unknown RPC error.");
   return `Installed Pi does not provide the required RPC capability \`${command}\`. Pi Agent requires Pi ${MINIMUM_PI_VERSION} or newer; upgrade Pi and retry. (${detail})`;
 }
+function getNonoOptions(nono) {
+  if (nono?.state === NONO_STATE_PROFILE_REQUIRED) throw new Error(nono.message);
+  return nono?.command && nono?.profile ? { command: nono.command, profile: nono.profile } : void 0;
+}
 var PiRpcClient = class {
   constructor(options = {}) {
     this.options = options;
@@ -3293,15 +3447,17 @@ var PiRpcClient = class {
     if (this.startPromise) return this.startPromise;
     this.startPromise = new Promise((resolve, reject) => {
       const piExecutable = findPiExecutable(this.options.piExecutablePath);
+      const nono = getNonoOptions(this.options.nono);
       const invocation = buildPiProcessInvocation(
         piExecutable,
         this.options.args ?? ["--mode", "rpc"],
         {
           cwd: this.options.cwd,
+          nono,
           detached: process.platform !== "win32"
         }
       );
-      const child = (0, import_node_child_process2.spawn)(
+      const child = (0, import_node_child_process3.spawn)(
         invocation.command,
         invocation.args,
         invocation.options
@@ -3493,7 +3649,7 @@ var PiRpcClient = class {
     if (!child) return;
     try {
       if (process.platform === "win32" && child.pid) {
-        (0, import_node_child_process2.execFileSync)(
+        (0, import_node_child_process3.execFileSync)(
           "taskkill",
           ["/pid", String(child.pid), "/T", "/F"],
           {
@@ -3532,6 +3688,7 @@ var PiCommandCatalog = class {
   async getCommands(vaultBasePath) {
     const client = new PiRpcClient({
       piExecutablePath: this.settings.piExecutablePath,
+      nono: resolveNonoWrapper(this.settings),
       cwd: vaultBasePath ?? this.pluginDirectory,
       args: buildCommandDiscoveryArgs(this.settings, vaultBasePath),
       extensionUiHandler: this.extensionUiHandler
@@ -3600,6 +3757,7 @@ var PiModelCatalog = class {
   async getAvailableModels(vaultBasePath) {
     const client = new PiRpcClient({
       piExecutablePath: this.settings.piExecutablePath,
+      nono: resolveNonoWrapper(this.settings),
       cwd: vaultBasePath ?? this.pluginDirectory,
       args: ["--mode", "rpc", "--no-session", "--no-tools"]
     });
@@ -3648,7 +3806,7 @@ function getSupportedReasoningLevels(model) {
 }
 
 // src/pi/runner.mjs
-var import_node_child_process3 = require("node:child_process");
+var import_node_child_process4 = require("node:child_process");
 var import_node_fs2 = __toESM(require("node:fs"), 1);
 var import_node_path3 = __toESM(require("node:path"), 1);
 
@@ -4365,7 +4523,7 @@ var PiRunner = class {
     if (!child) return;
     try {
       if (process.platform === "win32" && child.pid) {
-        (0, import_node_child_process3.execFileSync)(
+        (0, import_node_child_process4.execFileSync)(
           "taskkill",
           ["/pid", String(child.pid), "/T", "/F"],
           {
@@ -4399,6 +4557,7 @@ var PiRunner = class {
     const session = this.resolveOrCreateSession(sessionReference);
     const client = new PiRpcClient({
       piExecutablePath: this.settings.piExecutablePath,
+      nono: resolveNonoWrapper(this.settings),
       cwd: this.workingDirectory ?? this.pluginDirectory,
       args: this.buildPiArgs(session.path, "rpc"),
       extensionUiHandler: this.extensionUiHandler
@@ -4512,9 +4671,10 @@ var PiRunner = class {
       const piExecutable = findPiExecutable(this.settings.piExecutablePath);
       const invocation = buildPiProcessInvocation(piExecutable, args, {
         cwd: this.workingDirectory ?? this.pluginDirectory,
+        nono: this.getNonoWrapper(),
         detached: process.platform !== "win32"
       });
-      const child = (0, import_node_child_process3.spawn)(
+      const child = (0, import_node_child_process4.spawn)(
         invocation.command,
         invocation.args,
         invocation.options
@@ -4715,6 +4875,11 @@ var PiRunner = class {
       this.settings.model === CUSTOM_MODEL_VALUE ? this.settings.customModel : this.settings.model;
     if (!modelId) modelId = this.settings.effectiveModel;
     return modelId ? this.settings.availableModels.find((model) => model.slug === modelId) : void 0;
+  }
+  getNonoWrapper() {
+    const wrapper = resolveNonoWrapper(this.settings);
+    if (wrapper.state === "profile-required") throw new Error(wrapper.message);
+    return wrapper;
   }
   buildPiArgs(sessionId, mode = "rpc") {
     const args = ["--mode", mode, "--session", sessionId];
@@ -5284,7 +5449,14 @@ var PiAgentSettingTab = class extends import_obsidian6.PluginSettingTab {
       {
         type: "group",
         heading: "Pi CLI",
-        items: [this.getPiExecutableDefinition(), this.getPiInstallationDefinition()]
+        items: [
+          this.getPiExecutableDefinition(),
+          this.getPiInstallationDefinition(),
+          this.getNonoSandboxDefinition(),
+          this.getNonoProfileDefinition(),
+          this.getNonoExecutableDefinition(),
+          this.getNonoInstallationDefinition()
+        ]
       },
       {
         type: "group",
@@ -5542,6 +5714,73 @@ var PiAgentSettingTab = class extends import_obsidian6.PluginSettingTab {
             this.plugin.checkPiInstallation(true);
           })
         )
+    };
+  }
+  getNonoExecutablePath() {
+    return findNonoExecutable(this.plugin.settings.nonoExecutablePath);
+  }
+  getNonoSandboxDefinition() {
+    return {
+      name: "Run Pi inside a nono sandbox",
+      desc: this.getNonoExecutablePath()
+        ? "Launch Pi through nono so its filesystem and network access is mediated by the operating system. On by default when nono is detected."
+        : "nono was not found on PATH. Install it, then fully restart Obsidian.",
+      render: (setting) => {
+        const control = setting.addToggle((toggle) =>
+          toggle.setValue(this.plugin.settings.nonoEnabled !== false).onChange(async (value) => {
+            this.plugin.settings.nonoEnabled = value;
+            await this.plugin.saveSettings();
+          })
+        );
+        if (!this.getNonoExecutablePath()) control.setDisabled(true);
+      }
+    };
+  }
+  getNonoProfileDefinition() {
+    return {
+      name: "Nono profile",
+      desc: "Profile name or path nono applies to every Pi launch. Required while the sandbox is enabled.",
+      render: (setting) => {
+        if (!this.getNonoExecutablePath()) return;
+        setting.addText((text) =>
+          text
+            .setPlaceholder("/etc/profiles/nono/profile.json")
+            .setValue(this.plugin.settings.nonoProfile)
+            .onChange(async (value) => {
+              this.plugin.settings.nonoProfile = value.trim();
+              await this.plugin.saveSettings();
+            })
+        );
+      }
+    };
+  }
+  getNonoExecutableDefinition() {
+    return {
+      name: "nono executable path",
+      desc: "Optional path to nono. Leave empty to detect it on PATH. Supports ~ and environment variables like ${USER}.",
+      render: (setting) =>
+        setting.addText((text) =>
+          text
+            .setPlaceholder("/opt/homebrew/bin/nono")
+            .setValue(this.plugin.settings.nonoExecutablePath)
+            .onChange(async (value) => {
+              this.plugin.settings.nonoExecutablePath = value.trim();
+              await this.plugin.saveSettings();
+              this.display();
+            })
+        )
+    };
+  }
+  getNonoInstallationDefinition() {
+    return {
+      name: "Check nono setup",
+      desc: "Verify that Obsidian can run nono and resolve the configured profile.",
+      render: (setting) => {
+        const button = setting.addButton((button2) =>
+          button2.setButtonText("Check").onClick(() => this.plugin.checkNonoSetup(true))
+        );
+        if (!this.getNonoExecutablePath()) button.setDisabled(true);
+      }
     };
   }
   getDefaultSkillsDefinition() {
@@ -10164,7 +10403,7 @@ var PiAgentPlugin = class extends P.Plugin {
     this.annotationController = new MarkdownAnnotationsController(this);
     this.annotationController.start();
     if (!this.settings.dryRun) {
-      warmupPiCli(this.settings.piExecutablePath, this.getPluginDirectory());
+      warmupPiCli(this.settings.piExecutablePath, this.getPluginDirectory(), this.settings);
     }
     this.refreshCurrentContextFile();
     void this.refreshCommandCatalog(false);
@@ -10379,6 +10618,11 @@ var PiAgentPlugin = class extends P.Plugin {
     }
     showSuccess ? new P.Notice(e.message) : new PiSetupModal(this, e).open();
     return e;
+  }
+  checkNonoSetup(showResult) {
+    const result = checkNonoSetup(this.settings);
+    if (showResult) new P.Notice(result.message);
+    return result;
   }
   async refreshModelCatalog(showNotice = false, force = true) {
     if (!force && !needsRuntimeCatalogRefresh(this.settings, this.modelCatalogRefreshedAt)) {
