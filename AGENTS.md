@@ -150,6 +150,23 @@ Run the relevant checks before you finish a change.
   files, and manually promote the `## Unreleased` entries into the release
   version section before you tag.
 
+## Documentation style
+
+Apply the [Google developer documentation style guide](https://developers.google.com/style) to `README.md`, `PRIVACY.md`, `TESTING.md`, `RELEASE.md`, `AGENTS.md`, and `docs/`. Keep `CHANGELOG.md` in its conventional user-facing voice.
+
+- Use sentence case for headings, without trailing punctuation.
+- Address the reader as you, and use the imperative for instructions and rules.
+- Use present tense and active voice; avoid "will" and passive constructions.
+- Format UI labels, settings, commands, file paths, and identifiers as code.
+- Use bold and italics sparingly, and never for status or emphasis that a sentence can carry.
+- Avoid all-caps text, exclamation points, and filler such as "simply", "just", "easy", "obviously", and "please".
+- Expand abbreviations such as "e.g." and "i.e." into "for example" and "that is".
+- Use the serial comma in lists of three or more items.
+- Keep list items parallel: start each one with a similar part of speech and a similar length.
+- Use descriptive link text, and never "here", "this", or "details" as the only link content.
+- Give each procedure its own heading, and start every numbered step with a verb.
+- Split run-on sentences; put one main point in each paragraph and each bullet.
+
 ## Privacy and safety documentation
 
 Update `README.md` and [Privacy](PRIVACY.md) when a change affects any of the
