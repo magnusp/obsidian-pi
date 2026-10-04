@@ -1,0 +1,64 @@
+# Dependency and action updates.
+#
+# The repository carries manual `overrides` in package.json to clear npm
+# advisories. Nothing refreshed those on its own, so a newly disclosed
+# advisory stayed open until someone noticed. Dependabot is what keeps them
+# current.
+#
+# Notes:
+# - Dependabot cannot satisfy an override from a version range alone, so an
+#   advisory fix that needs an `overrides` entry is still a manual change. It
+#   will be reported as an alert on the Dependabot tab either way.
+# - Direct dependencies ship inside main.js, so bundler and Obsidian type
+#   updates are reviewed as code changes, not as lockfile noise.
+
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:30"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+    groups:
+      # Obsidian type definitions and the lint tooling move together often and
+      # have broken the typecheck independently, so keep them in one reviewable
+      # change rather than a queue of single-package bumps.
+      obsidian-and-tooling:
+        patterns:
+          - obsidian
+          - typescript
+          - "@codemirror/*"
+          - eslint
+          - "@eslint/*"
+          - "eslint-*"
+          - prettier
+          - vitest
+          - esbuild
+      # Advisory fixes usually land as a minor or patch bump, sometimes with an
+      # accompanying `overrides` edit in package.json. Grouping those keeps a
+      # remediation reviewable in one change instead of a queue of unrelated
+      # single-package bumps.
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:10"
+      timezone: Etc/UTC
+    labels:
+      - dependencies
+      - ci
+    groups:
+      actions:
+        patterns:
+          - "*"

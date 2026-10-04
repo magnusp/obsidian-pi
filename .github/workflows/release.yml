@@ -3,7 +3,12 @@ name: Release Obsidian plugin
 on:
   push:
     tags:
-      - "*.*.*"
+      # Exact SemVer release tags only. Obsidian reads manifest.json for the
+      # version, and scripts/check-version.mjs requires the tag to equal it
+      # character for character, so a prerelease-shaped tag such as 0.0.16-beta.1
+      # can never pass the version check. Matching digits only keeps such a tag
+      # from triggering a workflow run that would fail after the full gate.
+      - "[0-9]+.[0-9]+.[0-9]+"
 
 permissions:
   attestations: write
@@ -37,6 +42,18 @@ jobs:
 
       - name: Run quality gates
         run: npm run ci
+
+      # npm run ci verifies that the committed main.js matches src/ and never
+      # writes it. Build explicitly here so the published assets come from this
+      # run rather than from whatever was committed in the tagged commit.
+      - name: Build release assets
+        run: npm run build
+
+      - name: Verify the built bundle is the committed bundle
+        run: |
+          # Fails if this run's build differs from the committed main.js, which
+          # would mean the commit was tagged without regenerating the bundle.
+          git diff --exit-code -- main.js
 
       - name: Generate release notes
         run: npm run release:notes

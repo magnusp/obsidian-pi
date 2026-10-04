@@ -24,18 +24,49 @@ Use this as the first place to understand where things live.
 - Plugin docs: `docs/` - maintainer architecture, development, and publishing notes.
 - Tests: `tests/` - Vitest unit tests for source helpers.
 - Scripts: `scripts/` - build, dev install, release packaging, and version validation.
-- CI: `.github/workflows/` - `ci.yml` (quality gate), `security.yml` (zizmor workflow audit and dependency review), `skip-lib-check.yml` (reports when the `skipLibCheck` workaround can be removed), and `release.yml` (tag-driven releases).
+- CI: `.github/workflows/` - `ci.yml` (quality gate), `security.yml` (zizmor workflow audit, full-tree `npm audit`, dependency review), `skip-lib-check.yml` (reports when the `skipLibCheck` workaround can be removed), and `release.yml` (tag-driven releases).
 
 ## Generated and runtime files
 
-- `main.js` is the generated release entry. Do not hand-edit it for source changes.
-- After changing `src/`, regenerate `main.js` with `npm run build`.
-- Keep generated/runtime/local files out of git:
-  - `node_modules/`
-  - `data.json`
-  - `pi-sessions/`
-  - `release-notes.md`
-  - release zip files
+- `main.js` is the generated release entry, so the source change alone is not a
+  finished change:
+
+```bash
+npm run build   # regenerate main.js from src/
+npm run ci      # verify, including that main.js matches src/
+```
+
+`npm run ci` verifies and never writes. `build:check` rebuilds in memory and
+compares that output against the committed `main.js`, so a source change
+shipped without a rebuild fails the gate with a stale-bundle error. `npm run
+build` regenerates the bundle; commit it with the source change that required
+it.
+
+The release workflow rebuilds on the runner and then fails if its output differs
+from the committed `main.js`, so a tag on a commit that skipped the rebuild
+cannot publish an out-of-date bundle.
+
+## Dependency and action updates
+
+`.github/dependabot.yml` opens weekly pull requests for npm and GitHub Actions
+updates. The `overrides` in `package.json` that clear npm advisories need manual
+edits when Dependabot cannot satisfy them from a version range; an advisory fix
+that needs a new override is still a human step. The Security workflow audits
+the whole installed tree, including devDependencies, so a newly disclosed
+advisory against a version already in the lockfile cannot hide behind a pull
+request that never touched it.
+
+The Obsidian scanner lint is budgeted at zero warnings
+(`lint:obsidian --max-warnings 0`) rather than errors only. Run
+`npm run lint:obsidian:report` to list findings without failing on them.
+
+Keep generated/runtime/local files out of git:
+
+- `node_modules/`
+- `data.json`
+- `pi-sessions/`
+- `release-notes.md`
+- release zip files
 
 ## Validation
 

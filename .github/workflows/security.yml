@@ -55,6 +55,49 @@ jobs:
           # which is what catches a newly disclosed vulnerable action.
           online-audits: "true"
 
+  dependency-audit:
+    name: Audit dependencies
+    runs-on: ubuntu-latest
+
+    # A full-tree audit of the installed tree, on a schedule as well as on
+    # changes. The dependency-review job below only sees what a pull request
+    # touches, so an advisory disclosed against a version already in
+    # package-lock.json would be reported by neither. This job is what catches
+    # that case.
+    #
+    # It audits the whole tree, including devDependencies. The plugin ships no
+    # runtime dependencies, but the bundler, Obsidian type definitions, and
+    # lint tooling all execute during the build, so a compromised devDependency
+    # reaches the shipped bundle too.
+    #
+    # Blocking, unlike zizmor: there is no code-scanning rule for this signal,
+    # and an advisory has one unambiguous remediation. Failing on high and
+    # critical keeps moderate and low findings visible without blocking.
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Uses the committed package-lock.json exactly. --audit-level=high makes
+      # this the failure threshold, so moderate and low advisories surface in
+      # the log without failing the run. The `--omit=dev` variant would miss
+      # everything that matters here, so it is deliberately not used.
+      - name: Audit installed dependencies
+        run: npm audit --audit-level=high
+
   dependency-review:
     name: Dependency review
 
