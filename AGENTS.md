@@ -21,7 +21,7 @@ Start here to understand where things live.
 - Release assets: `main.js`, `manifest.json`, and `styles.css`, which Obsidian installs directly.
 - Source: `src/`, the human-editable plugin source. Edit this before you touch generated release output.
 - Shared helpers: `src/shared/`, pure helpers with unit tests.
-- Plugin docs: `docs/`, which covers architecture, development, and publishing for maintainers.
+- Plugin docs: `docs/`, which covers architecture, development, and publishing for maintainers and follows the Google developer documentation style guide.
 - Tests: `tests/`, Vitest unit tests for source helpers.
 - Scripts: `scripts/`, which covers the build, the development install, release packaging, and version validation.
 - CI: `.github/workflows/` - `ci.yml` (quality gate), `security.yml` (zizmor workflow audit, full-tree `npm audit`, dependency review), `skip-lib-check.yml` (reports when the `skipLibCheck` workaround can be removed), and `release.yml` (tag-driven releases).
@@ -152,7 +152,7 @@ Run the relevant checks before you finish a change.
 
 ## Documentation style
 
-Apply the [Google developer documentation style guide](https://developers.google.com/style) to `README.md`, `PRIVACY.md`, `TESTING.md`, `RELEASE.md`, `AGENTS.md`, and `docs/`. Keep `CHANGELOG.md` in its conventional user-facing voice.
+Follow the [Google developer documentation style guide](https://developers.google.com/style) for `README.md`, `PRIVACY.md`, `TESTING.md`, `RELEASE.md`, `AGENTS.md`, and `docs/`. The rules below implement that guide; where one of them is stricter than the guide, this file wins. Keep `CHANGELOG.md` in its conventional user-facing voice.
 
 - Use sentence case for headings, without trailing punctuation.
 - Address the reader as you, and use the imperative for instructions and rules.
