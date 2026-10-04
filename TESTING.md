@@ -3,7 +3,7 @@
 **Status: MANUAL VALIDATION PENDING FOR THE NEXT RELEASE.** Issue #43 must remain open until every applicable manual item below passes in the dedicated test vault:
 
 ```text
-/Users/xcad/Obsidian/ObsidianTesting
+/path/to/dedicated/test-vault
 ```
 
 Do not place source changes or test fixtures in that vault. Its plugin files should point to a development build from this repository.
@@ -15,7 +15,7 @@ From this repository (not from the test vault):
 ```bash
 npm ci
 npm run ci
-npm run test:pi -- /Users/xcad/Obsidian/ObsidianTesting
+npm run test:pi -- /path/to/dedicated/test-vault
 ```
 
 `npm run ci` includes `lint:obsidian:errors`, which runs the official `eslint-plugin-obsidianmd` recommended rules and fails on error-level Community scanner findings. This gate runs on pull requests, pushes to `main`, and again before the release workflow can publish assets. Run `npm run lint:obsidian` separately to inspect the scanner's non-blocking warnings as well.
@@ -26,7 +26,7 @@ npm run test:pi -- /Users/xcad/Obsidian/ObsidianTesting
 
 ```bash
 npm run build
-npm run dev:install -- /Users/xcad/Obsidian/ObsidianTesting/.obsidian/plugins/pi-agent
+npm run dev:install -- /path/to/dedicated/test-vault/.obsidian/plugins/pi-agent
 ```
 
 Then open `ObsidianTesting`, reload or disable/re-enable Pi Agent, and keep the developer console visible.
