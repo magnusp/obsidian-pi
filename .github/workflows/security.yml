@@ -104,3 +104,108 @@ jobs:
           # Blocks the pull request only on high and critical advisories, so
           # low and moderate findings stay visible without adding churn.
           fail-on-severity: high
+
+  # Verifies that the repository ruleset declaring zizmor merge protection is
+  # still applied to the default branch.
+  #
+  # Runs on pull requests but never fails there: the state it reads is
+  # repository administration, so a failing required check would block a pull
+  # request that its author has no way to unblock. On schedule and manual runs
+  # it does fail, which is what makes it a notification rather than a log line.
+  #
+  # Presence-gated on .github/rulesets/zizmor.json so forks and upstream copies
+  # are unaffected by default.
+  ruleset-policy:
+    name: Verify zizmor ruleset policy
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Compare declared policy with live branch rules
+        id: policy
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const fs = require("node:fs");
+            const declaredPath = ".github/rulesets/zizmor.json";
+
+            if (!fs.existsSync(declaredPath)) {
+              core.setOutput("checked", "false");
+              core.setOutput("drift", "false");
+              core.notice(`No ${declaredPath}, so this repository has not opted into ruleset verification.`);
+              return;
+            }
+
+            const declared = JSON.parse(fs.readFileSync(declaredPath, "utf8"));
+            const expected = declared.code_scanning;
+            const { owner, repo } = context.repo;
+            const branch = context.payload?.repository?.default_branch ?? "main";
+
+            core.setOutput("checked", "true");
+
+            let live;
+            try {
+              const response = await github.request(
+                "GET /repos/{owner}/{repo}/rules/branches/{branch}",
+                { owner, repo, branch }
+              );
+              live = Array.isArray(response.data) ? response.data : [];
+            } catch (error) {
+              core.setOutput("drift", "unknown");
+              core.error(
+                `Could not read the rules applied to ${branch}: ${error.message}. ` +
+                  `The check needs Metadata: read, which GITHUB_TOKEN has.`
+              );
+              return;
+            }
+
+            const rule = live.find((entry) => entry.type === "code_scanning");
+            const tool = rule?.parameters?.code_scanning_tools?.find(
+              (entry) => entry.tool === expected.tool
+            );
+
+            const drift = [];
+            if (!rule) {
+              drift.push(`no code_scanning rule is applied to ${branch}`);
+            } else if (!tool) {
+              drift.push(`no code_scanning rule for ${expected.tool} is applied to ${branch}`);
+            } else {
+              for (const key of ["alerts_threshold", "security_alerts_threshold"]) {
+                if (tool[key] !== expected[key]) {
+                  drift.push(`${key} is ${tool[key]}, declared ${expected[key]}`);
+                }
+              }
+            }
+
+            const summary = [
+              "## zizmor ruleset policy",
+              "",
+              `Declared in \`${declaredPath}\`, compared against the rules actually applied to \`${branch}\`.`,
+              "",
+              drift.length === 0
+                ? "Policy matches. Note this confirms the policy is present, not that `enforcement` is `active`."
+                : ["**Drift detected:**", ...drift.map((entry) => `- ${entry}`), "",
+                   "Recreate with the API commands in the declaration file, then re-run this workflow."],
+              "",
+              "See issue #10 for the design rationale.",
+            ].join("\n");
+
+            await core.summary.addRaw(summary).write();
+            core.info(summary);
+
+            core.setOutput("drift", drift.length === 0 ? "false" : "true");
+
+      # Fails only on schedule and manual runs. On a pull request the step above
+      # has already written the finding to the job summary and the run log.
+      - name: Fail when policy drift is detected
+        if: steps.policy.outputs.drift != 'false' && github.event_name != 'pull_request'
+        run: |
+          echo "::error title=zizmor ruleset policy drift::The ruleset no longer matches .github/rulesets/zizmor.json. See the job summary."
+          exit 1
