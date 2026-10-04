@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Updated the development dependency set to clear all known npm security advisories; `npm audit` now reports zero vulnerabilities. Advisory fixes are pinned with minimal in-range `overrides`, and `obsidian` types move to 1.13.1 with `skipLibCheck` enabled to tolerate an upstream defect in its published declarations. No runtime dependency or shipped plugin code changed.
+
 ## 0.0.15
 
 - Replaced broad annotation `:has()` selectors and avoidable `!important` overrides with native sibling selectors and narrowly scoped specificity, preserving keyboard focus, selected intent, and processing-mask behavior. (#85)
