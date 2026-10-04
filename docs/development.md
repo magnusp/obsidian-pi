@@ -5,6 +5,7 @@ agent modes can modify files anywhere Pi can reach.
 
 ```bash
 npm ci
+npm run build
 npm run ci
 npm run dev:install -- /path/to/vault/.obsidian/plugins/pi-agent
 ```
@@ -15,6 +16,28 @@ path argument.
 
 The full manual checklist lives in [`TESTING.md`](../TESTING.md), and the
 release flow lives in [`RELEASE.md`](../RELEASE.md).
+
+## Branches
+
+`main` is the release branch. Feature work happens on an issue branch named for
+its issue, reviewed as a pull request, and merged into `main`.
+
+`integration` is a transient local scratch branch for testing several pull
+requests together before they reach `main`. Create it when a batch needs joint
+testing, and delete it once `main` has absorbed them:
+
+```bash
+git checkout main
+git checkout -b integration
+git merge <pr-branch>
+npm run build
+npm run ci
+```
+
+Point the test vault at that branch's build for the manual checks, then merge the
+reviewed pull requests into `main`. It is never pushed and never permanently
+maintained, so there is no branch to resync after each merge and no local-only
+history to lose. Recreate it from `main` when the next batch lands.
 
 ## Quality gates
 
@@ -109,9 +132,10 @@ Notes that matter when changing these:
 
 ## Worktrees
 
-`AGENTS.md` uses a `development` worktree for integration testing. If you create
-one **inside** this repository, Vitest discovers the tests inside it and the
-suite silently double-counts, which looks like extra passing tests rather than a
+`AGENTS.md` uses a transient local `integration` branch for joint testing of
+several pull requests before they reach `main`. If you create a worktree for it
+**inside** this repository, Vitest discovers the tests inside it and the suite
+silently double-counts, which looks like extra passing tests rather than a
 failure. Keep worktrees outside the repository directory, or remove them before
 running `npm test`.
 

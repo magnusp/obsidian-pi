@@ -124,10 +124,10 @@ Run the relevant checks before finishing changes.
 
 - Before implementing feature work or behavior changes, create or identify a GitHub issue and reference it in commits, pull requests, and changelog entries.
 - Work on a feature branch named for the issue, for example `issue-3-short-topic`.
-- Before merging remote pull requests into `main`, merge their branches into the local-only `development` branch, resolve integration conflicts, regenerate `main.js`, and run `npm run ci`.
-- Point the dedicated test vault at the `development` worktree and complete relevant manual checks there. Merge the reviewed pull requests into `main` only after the combined build passes.
+- Before merging remote pull requests into `main`, create a short-lived local `integration` branch from the current `main` and merge the pull request branches into it, resolve integration conflicts, regenerate `main.js`, and run `npm run ci`.
+- Point the dedicated test vault at the `integration` worktree and complete relevant manual checks there. Merge the reviewed pull requests into `main` only after the combined build passes.
+- `integration` is transient. Create it when a batch of pull requests needs joint testing, and delete it once `main` has absorbed them. It is a local scratch branch, not a permanent branch, not a replacement for issue branches or pull requests, and not something to push. Recreate it with `git checkout main && git checkout -b integration` when the next batch lands.
 - Keep worktrees outside this repository directory. A worktree created inside it makes Vitest discover the nested test suite and silently double-count results, which reads as extra passing tests rather than a failure.
-- Keep `development` local unless the user explicitly requests publishing it; it is an integration-test branch, not a replacement for issue branches or pull requests.
 - Add user-facing changes under `## Unreleased` in `CHANGELOG.md` and include the issue number, for example `(#3)`.
 - For releases, use a release-prep branch/PR to bump version files and manually promote `## Unreleased` entries into the release version section before tagging.
 
