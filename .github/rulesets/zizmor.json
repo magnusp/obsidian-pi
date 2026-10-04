@@ -1,0 +1,35 @@
+{
+  "_comment": [
+    "Expected repository ruleset policy. .github/workflows/security.yml compares",
+    "this against the rules actually applied to the default branch and reports",
+    "drift. Deleting this file opts this repository out of the check entirely,",
+    "which is what forks and upstream copies should do.",
+    "",
+    "Why alerts_threshold and not security_alerts_threshold: zizmor alerts carry",
+    "security_severity_level = null, so security_alerts_threshold can never match",
+    "any zizmor finding. alerts_threshold: errors is the field that actually",
+    "blocks. This was verified by driving a pull request to BLOCKED and back to",
+    "CLEAN. Do not 'correct' this back to the documented field; it does nothing.",
+    "",
+    "Known limit, stated so nobody over-trusts the check: the branch rules API",
+    "does not report `enforcement`, and that field needs Administration: read,",
+    "which GITHUB_TOKEN does not have. This verifies that the policy is present,",
+    "not that it is actively enforcing. A ruleset left in evaluate (dry run) mode",
+    "is not detected here and would provide no protection.",
+    "",
+    "CI deliberately does not create or repair this ruleset. A workflow that",
+    "maintains its own guardrails can be edited to weaken them, and it would",
+    "require an admin-scoped credential in CI. See issue #10 for the reasoning.",
+    "",
+    "Recreate with the API if it is ever lost:",
+    "  POST /repos/{owner}/{repo}/rulesets",
+    "  target branch, conditions.ref_name.include [\"~DEFAULT_BRANCH\"],",
+    "  rules [{ type: code_scanning, parameters: { code_scanning_tools:",
+    "    [{ tool: zizmor, alerts_threshold: errors, security_alerts_threshold: none }] } }]"
+  ],
+  "code_scanning": {
+    "tool": "zizmor",
+    "alerts_threshold": "errors",
+    "security_alerts_threshold": "none"
+  }
+}
