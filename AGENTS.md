@@ -77,7 +77,7 @@ Run the relevant checks before finishing changes.
   - `context/` for vault graph/search/context assembly.
   - `pi/` for Pi CLI integration, model catalog, and event parsing.
   - `threads/` for chat history/thread state.
-  - `changes/` for snapshots, diffs, and revert behavior.
+  - `annotations/` for annotation models, stores, anchors, and the CodeMirror editor layer.
   - `ui/` for views, controls, actions, activity, suggestions, and modals.
   - `shared/` for pure helpers.
 - Move pure logic to modules and cover it with tests before wiring it into Obsidian UI code.
