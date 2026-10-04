@@ -68,6 +68,7 @@ src/
     extension-ui.mjs              extension UI protocol and text sanitization
     health.mjs                    Pi version check and startup warmup
     diagnostics.mjs               CLI failure classification
+    nono.mjs                      nono detection, profile resolution, and setup check
     token-usage.mjs               token/context usage formatting
   threads/
     thread-store.mjs              chat thread state and normalization
@@ -148,7 +149,10 @@ the committed `main.js` is stale.
    annotations.
 4. The Pi domain formats the prompt and starts one long-lived `pi --mode rpc`
    process per thread, passing the tool mode, model, reasoning level, and any
-   configured skill paths.
+   configured skill paths. When a nono executable is detected, the invocation is
+   wrapped as `nono run --silent --profile <profile> --allow-cwd -- pi ...`
+   first. `--allow-cwd` is required for non-interactive runs because Pi's working
+   directory is the vault; the profile still decides the access level.
 5. The plugin writes a single `prompt` request over the RPC client's stdin. JSON
    events stream back into UI state: thinking, tool activity, text deltas, token
    usage, retries, compaction, and the final answer.
@@ -174,7 +178,27 @@ Selected by `settings.sandboxMode` and translated into Pi CLI flags in
 
 Enabling Edit or Full agent requires an explicit acknowledgement, stored as
 `settings.acknowledgedToolRisk`. Tool modes are **not** an operating-system
-sandbox; Pi runs with the user's privileges.
+sandbox; Pi runs with the user's privileges unless the optional nono sandbox
+below is active.
+
+## nono sandbox
+
+`src/pi/nono.mjs` resolves whether a run is sandboxed:
+
+- `findNonoExecutable` (in `src/pi/environment.mjs`) returns `null` when no nono
+  executable is found, so an absent sandbox never changes Pi's launch.
+- `resolveNonoWrapper(settings)` returns one of four states: `missing`,
+  `disabled`, `profile-required`, or `enabled` with a command and profile.
+- `enabled` is the default whenever nono is detected, using
+  `settings.nonoProfile` (default `obsidian`). A blank profile with the sandbox
+  on resolves to `profile-required`, which blocks the run instead of silently
+  launching Pi unsandboxed.
+- `checkNonoSetup(settings)` validates the profile through `nono profile show`
+  so the settings tab can report a typo before a run starts.
+
+`buildPiProcessInvocation` applies the wrapper, so the RPC client, the one-shot
+JSON path, the catalogs, and the startup warmup all inherit the same behavior.
+Windows keeps its `cmd.exe` quoting branch around the whole wrapped command.
 
 ## Local storage
 

@@ -1,3 +1,5 @@
+import { DEFAULT_NONO_PROFILE } from "../pi/nono.mjs";
+
 export const CUSTOM_MODEL_VALUE = "__custom";
 
 const REASONING_LABELS = {
@@ -21,6 +23,11 @@ export const DEFAULT_SETTINGS = {
   ignoredFolders: [".git", "node_modules", "Templates"],
   customInstructions: "",
   piExecutablePath: "",
+  // nono is auto-enabled so an installed sandbox applies without a hunt for a toggle.
+  // It is only honored when a nono executable is actually detected.
+  nonoEnabled: true,
+  nonoProfile: DEFAULT_NONO_PROFILE,
+  nonoExecutablePath: "",
   includeDefaultSkills: true,
   additionalSkillFolders: [],
   effectiveModel: "",
@@ -59,6 +66,9 @@ export function normalizeSettings(rawSettings = {}) {
   );
   settings.customInstructions = normalizeString(settings.customInstructions);
   settings.piExecutablePath = normalizeString(settings.piExecutablePath);
+  settings.nonoEnabled = settings.nonoEnabled !== false;
+  settings.nonoProfile = normalizeString(settings.nonoProfile);
+  settings.nonoExecutablePath = normalizeString(settings.nonoExecutablePath);
   settings.includeDefaultSkills = settings.includeDefaultSkills !== false;
   settings.additionalSkillFolders = normalizeStringList(settings.additionalSkillFolders, []);
   settings.effectiveModel = normalizeString(settings.effectiveModel);

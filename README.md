@@ -33,6 +33,8 @@ Tool modes, briefly:
 - Edit lets Pi edit/write files.
 - Full agent also lets Pi run shell commands.
 
+Optional sandboxing with [nono](https://github.com/nono): when a `nono` executable is detected on the path Obsidian uses, Pi Agent launches Pi as `nono run --silent --profile <profile> --allow-cwd -- pi ...` instead of `pi ...`, so filesystem and network access is mediated by the operating system. `--allow-cwd` is required because Pi runs with the vault as its working directory; it only authorizes the level the profile already defines. This is on by default once nono is detected. Set the required profile name (**Nono profile**, default `obsidian`) in settings, or turn the sandbox off there. A profile can grant access beyond the vault, so choose one you have reviewed.
+
 Privacy reminder: prompts, selected text, note content, search excerpts, attachments, and local chat history can be sent to the Pi CLI and then to your configured model provider.
 
 ## Features
@@ -52,7 +54,7 @@ Privacy reminder: prompts, selected text, note content, search excerpts, attachm
 
 Open a Markdown note and select text, then choose the **Annotations** header action to add a change request or question. With no selection, the action toggles block-pick mode; it works in both editing and reading views when Obsidian can map the rendered block to Markdown source. The command palette action **Pi Agent: Add or toggle annotation for active note** is the keyboard/fallback entry point. Annotations appear on the note, can be navigated, edited, or individually deleted, and are included with the active note in subsequent Pi prompts; detached anchors remain listed until edited or deleted.
 
-> Tool modes control which Pi CLI tools are enabled. They are not an operating-system sandbox.
+> Tool modes control which Pi CLI tools are enabled. They are not an operating-system sandbox. Enable the optional nono sandbox when you want a boundary outside Pi itself.
 
 ## Privacy and safety
 
@@ -66,6 +68,7 @@ Short version:
 - At plugin startup, Pi discovers project/global extensions, prompt templates, and skills through RPC and applies its own project-trust rules. The plugin passes any explicitly configured absolute or vault-contained skill paths to Pi.
 - Edit and Full agent modes can modify files in your vault/project.
 - Full agent mode enables Pi's complete tool set, including extension/custom tools and shell commands.
+- When a nono executable is detected, Pi launches inside a nono sandbox by default using the configured nono profile; nono mediates filesystem and network access and writes its own logs outside the vault.
 - Skills can contain instructions or scripts; only enable skill folders you trust.
 
 ## Installation

@@ -120,6 +120,30 @@ describe("plugin settings helpers", () => {
     expect(normalizeSettings({ showExtensionStatus: false }).showExtensionStatus).toBe(false);
   });
 
+  it("auto-enables nono with a default profile when settings are unset", () => {
+    expect(DEFAULT_SETTINGS).toMatchObject({
+      nonoEnabled: true,
+      nonoProfile: "obsidian",
+      nonoExecutablePath: ""
+    });
+    expect(normalizeSettings({})).toMatchObject({ nonoEnabled: true, nonoProfile: "obsidian" });
+  });
+
+  it("normalizes nono overrides from stored settings", () => {
+    expect(
+      normalizeSettings({
+        nonoEnabled: false,
+        nonoProfile: "  work  ",
+        nonoExecutablePath: " /opt/nono/bin/nono "
+      })
+    ).toMatchObject({
+      nonoEnabled: false,
+      nonoProfile: "work",
+      nonoExecutablePath: "/opt/nono/bin/nono"
+    });
+    expect(normalizeSettings({ nonoEnabled: "yes" }).nonoEnabled).toBe(true);
+  });
+
   it("finds custom selected model info and exposes tool modes", () => {
     expect(
       getSelectedModelInfo({

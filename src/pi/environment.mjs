@@ -3,6 +3,8 @@ import path from "node:path";
 
 const POSIX_PI_CANDIDATES = ["/opt/homebrew/bin/pi", "/usr/local/bin/pi", "/usr/bin/pi"];
 const WINDOWS_PI_CANDIDATES = ["pi.cmd", "pi.exe", "pi"];
+const POSIX_NONO_CANDIDATES = ["nono"];
+const WINDOWS_NONO_CANDIDATES = ["nono.cmd", "nono.exe", "nono"];
 const POSIX_PATH_CANDIDATES = [
   "/opt/homebrew/bin",
   "/usr/local/bin",
@@ -25,6 +27,31 @@ export function findPiExecutable(configuredPath = "") {
   if (piNode) return piNode;
 
   return "pi";
+}
+
+// nono is detected rather than assumed: unlike Pi, an absent sandbox binary must not
+// change how Pi launches, so this returns null instead of a bare command name.
+export function findNonoExecutable(configuredPath = "") {
+  const configuredExecutable = normalizePiExecutablePath(configuredPath);
+  if (configuredExecutable) return configuredExecutable;
+
+  const candidates = process.platform === "win32" ? WINDOWS_NONO_CANDIDATES : POSIX_NONO_CANDIDATES;
+  // PATH entries come first: when a GUI app inherits a PATH that already resolves
+  // nono, that install wins over a possibly stale system directory.
+  const directories = uniqueExistingDirectories([
+    ...getExistingPathEntries(),
+    ...POSIX_PATH_CANDIDATES,
+    ...getNodeVersionManagerDirectories()
+  ]);
+
+  for (const directory of directories) {
+    for (const candidate of candidates) {
+      const executable = path.join(directory, candidate);
+      if (fs.existsSync(executable)) return executable;
+    }
+  }
+
+  return null;
 }
 
 export function normalizePiExecutablePath(executablePath) {
@@ -75,36 +102,55 @@ function findPiNodeExecutable() {
 
 export function buildPiProcessInvocation(piExecutable, args = [], options = {}) {
   const processOptions = buildPiProcessOptions(piExecutable, options);
+  const target = wrapPiInvocationWithNono({ command: piExecutable, args }, options.nono);
 
-  return shouldUseWindowsCommandShell(piExecutable)
+  return shouldUseWindowsCommandShell(target.command)
     ? {
         command: process.env.ComSpec || "cmd.exe",
-        args: ["/d", "/s", "/c", quoteWindowsCommand([piExecutable, ...args])],
+        args: ["/d", "/s", "/c", quoteWindowsCommand([target.command, ...target.args])],
         options: {
           ...processOptions,
           windowsVerbatimArguments: true
         }
       }
     : {
-        command: piExecutable,
-        args,
+        command: target.command,
+        args: target.args,
         options: processOptions
       };
 }
 
-export function buildPiProcessOptions(piExecutable = findPiExecutable(), options = {}) {
+// Wrapping happens here, in the single place every Pi launch passes through, so the
+// RPC client, one-shot runs, and health checks cannot drift apart on sandbox behavior.
+export function wrapPiInvocationWithNono({ command, args }, nono) {
+  const profile = typeof nono?.profile === "string" ? nono.profile.trim() : "";
+  if (!nono?.command || !profile) return { command, args };
+
   return {
-    ...options,
-    env: buildPiProcessEnv(piExecutable)
+    command: nono.command,
+    // nono refuses any CWD access in non-interactive mode, and Pi runs with the
+    // vault as its working directory. --allow-cwd only authorizes the profile's
+    // configured level (read-only unless the profile raises it), so the profile
+    // still decides how much Pi can reach.
+    args: ["run", "--silent", "--profile", profile, "--allow-cwd", "--", command, ...args]
   };
 }
 
-export function buildPiProcessEnv(piExecutable = findPiExecutable()) {
+export function buildPiProcessOptions(piExecutable = findPiExecutable(), options = {}) {
+  const { nono, ...spawnOptions } = options;
+
+  return {
+    ...spawnOptions,
+    env: buildPiProcessEnv(piExecutable, nono?.command ? [nono.command] : [])
+  };
+}
+
+export function buildPiProcessEnv(piExecutable = findPiExecutable(), extraExecutables = []) {
   if (process.platform === "win32") return process.env;
 
   return {
     ...process.env,
-    PATH: buildPosixPath(piExecutable)
+    PATH: buildPosixPath(piExecutable, extraExecutables)
   };
 }
 
@@ -119,9 +165,10 @@ function quoteWindowsCommand(parts) {
   return `"${command}"`;
 }
 
-function buildPosixPath(piExecutable) {
+function buildPosixPath(piExecutable, extraExecutables = []) {
   return uniqueExistingDirectories([
     ...getExecutableDirectory(piExecutable),
+    ...extraExecutables.flatMap((executable) => getExecutableDirectory(executable)),
     ...POSIX_PATH_CANDIDATES,
     ...getPiNodePaths(),
     ...getNodeVersionManagerDirectories(),

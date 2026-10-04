@@ -5,6 +5,7 @@ import { buildPiProcessInvocation, findPiExecutable } from "./environment.mjs";
 import { createPiCliError, formatPiCliFailure } from "./diagnostics.mjs";
 import { isExtensionUiDialog, isExtensionUiMethod } from "./extension-ui.mjs";
 import { MINIMUM_PI_VERSION } from "./health.mjs";
+import { NONO_STATE_PROFILE_REQUIRED } from "./nono.mjs";
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const nodeTimerHost = { setTimeout: setNodeTimeout, clearTimeout: clearNodeTimeout };
@@ -27,6 +28,15 @@ export function isUnsupportedPiRpcCommandError(error) {
 export function formatPiCapabilityFailure(command, error) {
   const detail = error instanceof Error ? error.message : String(error || "Unknown RPC error.");
   return `Installed Pi does not provide the required RPC capability \`${command}\`. Pi Agent requires Pi ${MINIMUM_PI_VERSION} or newer; upgrade Pi and retry. (${detail})`;
+}
+
+// A sandbox request without a profile is a settings mistake, so fail before spawning
+// instead of starting Pi outside the sandbox the user asked for.
+export function getNonoOptions(nono) {
+  if (nono?.state === NONO_STATE_PROFILE_REQUIRED) throw new Error(nono.message);
+  return nono?.command && nono?.profile
+    ? { command: nono.command, profile: nono.profile }
+    : undefined;
 }
 
 /**
@@ -62,11 +72,13 @@ export class PiRpcClient {
 
     this.startPromise = new Promise((resolve, reject) => {
       const piExecutable = findPiExecutable(this.options.piExecutablePath);
+      const nono = getNonoOptions(this.options.nono);
       const invocation = buildPiProcessInvocation(
         piExecutable,
         this.options.args ?? ["--mode", "rpc"],
         {
           cwd: this.options.cwd,
+          nono,
           detached: process.platform !== "win32"
         }
       );

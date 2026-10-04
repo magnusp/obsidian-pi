@@ -21,7 +21,7 @@ Pi may forward this prompt/context to the model provider configured in your Pi s
 
 ## Network use
 
-The plugin itself does not call model-provider APIs directly and does not include telemetry. Network use happens through the Pi CLI and depends on your Pi provider/model configuration. When annotations are attached to a prompt, the configured provider can receive their plaintext content along with the rest of the prompt; consult that provider's privacy and retention terms.
+The plugin itself does not call model-provider APIs directly and does not include telemetry. Network use happens through the Pi CLI and depends on your Pi provider/model configuration. When an optional nono sandbox is active, nono mediates that network access according to the configured profile, so a profile may allow, restrict, or block outbound connections. When annotations are attached to a prompt, the configured provider can receive their plaintext content along with the rest of the prompt; consult that provider's privacy and retention terms.
 The opt-in compatibility smoke command starts Pi with `--offline`, disables discovered resources, and sends no model prompt, so it makes no model-provider request; ordinary chats are not offline unless your Pi configuration makes them so.
 
 When Obsidian is unfocused and the operating system has granted notification permission, the plugin can emit a generic local completion notification. Notification text does not include prompts, note content, thinking, tool arguments, or model responses. Clicking it focuses Obsidian and opens the originating local chat.
@@ -50,6 +50,14 @@ Tool modes control which Pi CLI tools are enabled:
 - Full agent: Pi's complete tool set, including extension/custom tools and shell commands.
 
 Tool modes are not an operating-system sandbox. Only enable Edit or Full agent for vaults and projects you are comfortable letting Pi inspect or modify.
+
+## Optional nono sandbox
+
+When the separately installed `nono` executable is detected on the path Obsidian hands to child processes, the plugin launches Pi as `nono run --silent --profile <profile> --allow-cwd -- pi ...` for every Pi process it starts: chat runs, the persistent RPC session, the model and command catalogs, and the startup warmup. Detection is the only trigger; the plugin never installs nono, and Pi launches exactly as before when nono is absent or the sandbox is turned off in settings.
+
+The sandbox mediates filesystem and network access for Pi and everything it spawns, and denies operations the selected profile does not cover. `--allow-cwd` is passed because non-interactive runs otherwise cannot access their working directory; it authorizes only the access level the profile defines. Because the sandbox sits outside the plugin, its decisions and audit logs live in nono's own state directories (for example under `~/.local/state/nono`), not in the vault, and are subject to nono's retention behavior. The profile may grant access beyond the vault, so a sandbox is only as restrictive as the profile it uses; review it with `nono profile show <name>` and `nono why --self --path <path> --op read|write`.
+
+A sandbox denial that reaches a run is reported as a sandbox failure with `nono why` remediation rather than as a Pi failure. The plugin stores only the profile name, the sandbox toggle, and an optional nono executable path in `data.json`.
 
 ## Skills
 

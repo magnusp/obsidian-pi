@@ -1,16 +1,18 @@
 import { spawn, spawnSync } from "node:child_process";
 import { diagnosePiCliFailure } from "./diagnostics.mjs";
 import { buildPiProcessInvocation, findPiExecutable } from "./environment.mjs";
+import { resolveNonoWrapper } from "./nono.mjs";
 
 // Keep these explicit: compatibility changes require a deliberate test pass and changelog entry.
 export const MINIMUM_PI_VERSION = "0.80.0";
 export const TESTED_PI_VERSION = "0.80.7";
 
-export function warmupPiCli(piExecutablePath = "", cwd) {
+export function warmupPiCli(piExecutablePath = "", cwd, settings = {}) {
   try {
     const piExecutable = findPiExecutable(piExecutablePath);
     const invocation = buildPiProcessInvocation(piExecutable, ["--version"], {
       ...(cwd ? { cwd } : {}),
+      nono: resolveNonoWrapper(settings),
       detached: process.platform !== "win32",
       stdio: "ignore",
       windowsHide: true

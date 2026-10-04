@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { PiRpcClient } from "../src/pi/rpc-client.mjs";
+import { getNonoOptions, PiRpcClient } from "../src/pi/rpc-client.mjs";
+import { NONO_PROFILE_REQUIRED_MESSAGE } from "../src/pi/nono.mjs";
 
 describe("PiRpcClient protocol framing", () => {
   it("splits records only on LF and preserves Unicode line separators in JSON strings", () => {
@@ -78,5 +79,25 @@ describe("PiRpcClient protocol framing", () => {
     client.subscribe((event) => events.push(event));
     client.handleLine("not json");
     expect(events).toEqual([{ type: "rpc_parse_error", raw: "not json" }]);
+  });
+});
+
+describe("PiRpcClient nono wrapping", () => {
+  it("passes a resolved sandbox through to the process invocation", () => {
+    expect(
+      getNonoOptions({ state: "enabled", command: "/usr/local/bin/nono", profile: "obsidian" })
+    ).toEqual({ command: "/usr/local/bin/nono", profile: "obsidian" });
+  });
+
+  it("launches Pi directly when no sandbox was resolved", () => {
+    expect(getNonoOptions(undefined)).toBeUndefined();
+    expect(getNonoOptions({ state: "missing" })).toBeUndefined();
+    expect(getNonoOptions({ state: "disabled" })).toBeUndefined();
+  });
+
+  it("refuses to start unsandboxed when a profile is required but blank", () => {
+    expect(() =>
+      getNonoOptions({ state: "profile-required", message: NONO_PROFILE_REQUIRED_MESSAGE })
+    ).toThrow(NONO_PROFILE_REQUIRED_MESSAGE);
   });
 });

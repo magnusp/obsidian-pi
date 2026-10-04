@@ -31,11 +31,11 @@ vi.mock("obsidian", () => {
 
 const { PiAgentSettingTab } = await import("../src/plugin/settings-tab.mjs");
 
-function createTab() {
+function createTab(settings = {}) {
   return new PiAgentSettingTab(
     { vault: { configDir: ".config" } },
     {
-      settings: { ignoredFolders: [".git"], showExtensionStatus: true },
+      settings: { ignoredFolders: [".git"], showExtensionStatus: true, ...settings },
       setShowExtensionStatus: vi.fn()
     }
   );
@@ -68,6 +68,10 @@ describe("Pi agent settings tab API compatibility", () => {
       "Custom model slug",
       "Pi executable path",
       "Check Pi installation",
+      "Run Pi inside a nono sandbox",
+      "Nono profile",
+      "nono executable path",
+      "Check nono setup",
       "Include default Pi skills",
       "Additional skill folders",
       "Ignored folders/directories"
@@ -93,13 +97,24 @@ describe("Pi agent settings tab API compatibility", () => {
     expect(tab.plugin.setShowExtensionStatus).toHaveBeenCalledWith(false);
   });
 
+  it("hides the nono profile field when nono is not detected", () => {
+    const tab = createTab({ nonoExecutablePath: "" });
+    tab.getNonoExecutablePath = vi.fn(() => null);
+
+    expect(tab.getNonoProfileDefinition().desc).toContain("Required");
+    expect(
+      tab.getNonoSandboxDefinition().desc
+    ).toContain("nono was not found on PATH");
+    expect(() => tab.getNonoProfileDefinition().render({})).not.toThrow();
+  });
+
   it("keeps legacy display rendering while routing 1.13 refreshes through update", () => {
     const tab = createTab();
     tab.renderLegacyDefinition = vi.fn();
 
     tab.display();
     expect(tab.containerEl.empty).toHaveBeenCalledOnce();
-    expect(tab.renderLegacyDefinition).toHaveBeenCalledTimes(12);
+    expect(tab.renderLegacyDefinition).toHaveBeenCalledTimes(16);
 
     tab.containerEl.empty.mockClear();
     tab.update = vi.fn();
