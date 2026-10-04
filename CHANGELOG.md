@@ -8,6 +8,7 @@
 - Budgeted the Obsidian plugin scanner lint at zero warnings instead of errors only, since submission review reads the full scanner output. `npm run lint:obsidian:report` lists the same findings without failing.
 - Restricted the release trigger to plain SemVer tags and documented that prerelease tags are unsupported, instead of letting `0.0.16-beta.1` start a run that could never satisfy the version check.
 - Recorded the Community Plugins submission checklist, including the `obsidian-pi` repository name against the `pi-agent` plugin id, as an explicit decision to make before submission.
+- Replaced the permanent local-only `development` branch with a transient `integration` branch that is created when a batch of pull requests needs joint testing and deleted once `main` absorbs them, removing the local-only history that was never pushed and the resync step after each merge.
 
 - Updated the development dependency set to clear all known npm security advisories; `npm audit` now reports zero vulnerabilities. Advisory fixes are pinned with minimal in-range `overrides`, and `obsidian` types move to 1.13.1 with `skipLibCheck` enabled to tolerate an upstream defect in its published declarations. No runtime dependency or shipped plugin code changed.
 
