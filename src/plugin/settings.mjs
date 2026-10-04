@@ -31,6 +31,10 @@ export const DEFAULT_SETTINGS = {
 };
 
 export function normalizeSettings(rawSettings = {}) {
+  // Legacy keys from settings that no longer exist. They are destructured out
+  // so an older data.json cannot reintroduce them into the saved settings.
+  // maxChangeSnapshotFiles belonged to the changes/ domain (vault snapshots,
+  // diff review, and revert), which was removed in ed055e0.
   const {
     maxSearchResults: _maxSearchResults,
     maxSearchFiles: _maxSearchFiles,

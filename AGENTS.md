@@ -24,7 +24,7 @@ Use this as the first place to understand where things live.
 - Plugin docs: `docs/` - maintainer architecture, development, and publishing notes.
 - Tests: `tests/` - Vitest unit tests for source helpers.
 - Scripts: `scripts/` - build, dev install, release packaging, and version validation.
-- CI: `.github/workflows/` - GitHub Actions for validation and release publishing.
+- CI: `.github/workflows/` - `ci.yml` (quality gate), `security.yml` (zizmor workflow audit and dependency review), `skip-lib-check.yml` (reports when the `skipLibCheck` workaround can be removed), and `release.yml` (tag-driven releases).
 
 ## Generated and runtime files
 
@@ -34,6 +34,7 @@ Use this as the first place to understand where things live.
   - `node_modules/`
   - `data.json`
   - `pi-sessions/`
+  - `release-notes.md`
   - release zip files
 
 ## Validation
@@ -43,10 +44,15 @@ Run the relevant checks before finishing changes.
 - Full gate: `npm run ci`
 - Targeted checks during refactors:
   - `npm run build`
+  - `npm run build:check`
   - `npm test`
   - `npm run lint`
+  - `npm run lint:obsidian`
   - `npm run typecheck`
   - `npm run format:check`
+- `npm run test:pi -- <dedicated test vault>` is an opt-in offline Pi RPC smoke
+  test. It sends no model prompt, so it incurs no provider charge. See
+  `TESTING.md`.
 
 ## Obsidian plugin conventions
 
@@ -77,7 +83,7 @@ Run the relevant checks before finishing changes.
   - `context/` for vault graph/search/context assembly.
   - `pi/` for Pi CLI integration, model catalog, and event parsing.
   - `threads/` for chat history/thread state.
-  - `changes/` for snapshots, diffs, and revert behavior.
+  - `annotations/` for annotation models, stores, anchors, and the CodeMirror editor layer.
   - `ui/` for views, controls, actions, activity, suggestions, and modals.
   - `shared/` for pure helpers.
 - Move pure logic to modules and cover it with tests before wiring it into Obsidian UI code.
@@ -88,7 +94,8 @@ Run the relevant checks before finishing changes.
 - Before implementing feature work or behavior changes, create or identify a GitHub issue and reference it in commits, pull requests, and changelog entries.
 - Work on a feature branch named for the issue, for example `issue-3-short-topic`.
 - Before merging remote pull requests into `main`, merge their branches into the local-only `development` branch, resolve integration conflicts, regenerate `main.js`, and run `npm run ci`.
-- Point the dedicated `ObsidianTesting` vault at the `development` worktree and complete relevant manual checks there. Merge the reviewed pull requests into `main` only after the combined build passes.
+- Point the dedicated test vault at the `development` worktree and complete relevant manual checks there. Merge the reviewed pull requests into `main` only after the combined build passes.
+- Keep worktrees outside this repository directory. A worktree created inside it makes Vitest discover the nested test suite and silently double-count results, which reads as extra passing tests rather than a failure.
 - Keep `development` local unless the user explicitly requests publishing it; it is an integration-test branch, not a replacement for issue branches or pull requests.
 - Add user-facing changes under `## Unreleased` in `CHANGELOG.md` and include the issue number, for example `(#3)`.
 - For releases, use a release-prep branch/PR to bump version files and manually promote `## Unreleased` entries into the release version section before tagging.
@@ -107,7 +114,7 @@ Update `README.md` and `PRIVACY.md` whenever changes affect:
 
 ## Manual testing
 
-- Use a dedicated Obsidian test vault for manual plugin testing.
-- Christian's dedicated testing vault is `/Users/xcad/Obsidian/ObsidianTesting`; its Pi Agent runtime files are linked to this repository's `main.js`, `manifest.json`, and `styles.css`, so rebuild and reload Obsidian to test the current checkout.
+- Use a dedicated Obsidian test vault for manual plugin testing, never a vault you care about.
+- Point that vault's plugin directory at a development build from this repository, for example with `npm run dev:install -- <vault>/.obsidian/plugins/pi-agent`, then reload Obsidian to test the current checkout.
 - Never test risky agent modes in a main vault.
 - Do not enable Edit or Full agent mode in a sensitive vault while validating refactors.
