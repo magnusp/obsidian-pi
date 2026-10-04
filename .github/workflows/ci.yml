@@ -28,3 +28,53 @@ jobs:
 
       - name: Run quality gates
         run: npm run ci
+
+  dependency-review:
+    name: Dependency review
+
+    # Only meaningful on pull requests, where the action can diff the proposed
+    # changes against the base branch.
+    #
+    # The action requires the dependency graph to be enabled for the
+    # repository (Settings > Code security and analysis > Dependency graph).
+    # Rather than failing CI when that repository-level setting is off, the
+    # probe step below skips the review and logs why.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Detect dependency graph availability
+        id: graph
+        uses: actions/github-script@v9
+        with:
+          script: |
+            // The SBOM endpoint is only served when the dependency graph is
+            // enabled, which makes it a usable probe. Uses the raw request
+            // helper so the check does not depend on a specific octokit
+            // method name staying stable.
+            try {
+              await github.request("GET /repos/{owner}/{repo}/dependency-graph/sbom", {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+              });
+              core.setOutput("enabled", "true");
+            } catch (error) {
+              // Any failure is treated as "not enabled" so a repository-level
+              // setting never blocks an unrelated pull request. The warning
+              // keeps the skip visible in the run log.
+              core.warning(
+                `Dependency graph unavailable, skipping dependency review: ${error.message}`
+              );
+              core.setOutput("enabled", "false");
+            }
+
+      - name: Review dependency changes
+        if: steps.graph.outputs.enabled == 'true'
+        uses: actions/dependency-review-action@v5
+        with:
+          # Blocks the pull request only on high and critical advisories, so
+          # low and moderate findings stay visible without adding churn.
+          fail-on-severity: high
